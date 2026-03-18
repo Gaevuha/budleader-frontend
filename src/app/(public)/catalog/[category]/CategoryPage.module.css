@@ -1,0 +1,30 @@
+.container {
+  padding: 16px 0 32px;
+}
+
+.title {
+  margin: 0 0 16px;
+  font-size: 24px;
+}
+
+.list {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 10px;
+}
+
+.item {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 10px 12px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+}
+
+@media (min-width: 768px) {
+  .container {
+    padding: 24px 0 40px;
+  }
+}

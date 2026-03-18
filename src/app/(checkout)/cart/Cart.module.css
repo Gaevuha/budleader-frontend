@@ -1,0 +1,255 @@
+.container {
+  padding-top: 32px;
+  padding-bottom: 64px;
+}
+
+.emptyCart {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.emptyIcon {
+  color: var(--border);
+  margin-bottom: 24px;
+  stroke-width: 1.5;
+}
+
+.emptyCart h2 {
+  font-size: 24px;
+  margin-top: 0;
+  margin-bottom: 12px;
+  color: var(--foreground);
+}
+
+.emptyCart p {
+  color: var(--foreground);
+  opacity: 0.6;
+  margin-bottom: 32px;
+}
+
+.continueBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--primary);
+  color: white;
+  padding: 12px 24px;
+  border-radius: var(--radius);
+  text-decoration: none;
+  font-weight: 500;
+  transition: background-color 0.2s;
+}
+
+.continueBtn:hover {
+  background-color: var(--primary-hover);
+}
+
+.pageTitle {
+  font-size: 32px;
+  font-weight: 700;
+  margin-bottom: 32px;
+  color: var(--foreground);
+}
+
+.layout {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 32px;
+}
+
+.itemsList {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.cartItem {
+  display: grid;
+  grid-template-columns: 80px 1fr auto auto auto;
+  align-items: center;
+  gap: 16px;
+  padding: 16px;
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.itemImageWrapper {
+  width: 80px;
+  height: 80px;
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background-color: var(--secondary);
+}
+
+.itemImage {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.itemInfo {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.itemName {
+  font-size: 16px;
+  font-weight: 500;
+  margin: 0;
+  color: var(--foreground);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.itemPrice {
+  font-size: 14px;
+  color: var(--foreground);
+  opacity: 0.6;
+  font-weight: 500;
+}
+
+.quantityControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background-color: var(--secondary);
+  padding: 4px;
+  border-radius: var(--radius-md);
+}
+
+.qtyBtn {
+  background: white;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: var(--foreground);
+}
+
+.qtyValue {
+  font-size: 14px;
+  font-weight: 500;
+  min-width: 24px;
+  text-align: center;
+}
+
+.itemTotal {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--foreground);
+  min-width: 100px;
+  text-align: right;
+}
+
+.removeBtn {
+  background: none;
+  border: none;
+  color: var(--foreground);
+  opacity: 0.5;
+  cursor: pointer;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  transition: all 0.2s;
+}
+
+.removeBtn:hover {
+  color: var(--danger);
+  background-color: rgba(229, 57, 53, 0.1);
+  opacity: 1;
+}
+
+.summary {
+  background-color: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 24px;
+  height: fit-content;
+  position: sticky;
+  top: 100px;
+}
+
+.summaryTitle {
+  font-size: 20px;
+  font-weight: 700;
+  margin-top: 0;
+  margin-bottom: 24px;
+  color: var(--foreground);
+}
+
+.summaryRow {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 16px;
+  font-size: 16px;
+  color: var(--foreground);
+  opacity: 0.8;
+}
+
+.divider {
+  height: 1px;
+  background-color: var(--border);
+  margin: 16px 0;
+}
+
+.totalRow {
+  font-weight: 700;
+  font-size: 20px;
+  color: var(--foreground);
+  margin-bottom: 24px;
+}
+
+.checkoutBtn {
+  width: 100%;
+}
+
+@media (max-width: 767px) {
+  .cartItem {
+    grid-template-columns: 80px 1fr auto;
+    grid-template-rows: auto auto;
+    gap: 12px;
+  }
+
+  .itemInfo {
+    grid-column: 2 / -1;
+  }
+
+  .quantityControls {
+    grid-column: 1 / 2;
+    grid-row: 2;
+  }
+
+  .itemTotal {
+    grid-column: 2 / 3;
+    grid-row: 2;
+    text-align: left;
+    display: flex;
+    align-items: center;
+  }
+
+  .removeBtn {
+    grid-column: 3 / 4;
+    grid-row: 2;
+  }
+}
+
+@media (min-width: 1024px) {
+  .layout {
+    grid-template-columns: 2fr 1fr;
+  }
+}
