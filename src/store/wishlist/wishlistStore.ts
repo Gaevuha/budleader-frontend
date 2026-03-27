@@ -6,6 +6,7 @@ import type { AppProduct } from "@/types/app";
 interface WishlistStore {
   wishlist: AppProduct[];
 
+  setWishlist: (items: AppProduct[]) => void;
   toggleWishlist: (product: AppProduct) => void;
   clearWishlist: () => void;
 }
@@ -14,6 +15,7 @@ export const useWishlistStore = create<WishlistStore>()(
   persist(
     (set) => ({
       wishlist: [],
+      setWishlist: (items) => set({ wishlist: items }),
       toggleWishlist: (product) =>
         set((state) => {
           const exists = state.wishlist.some((item) => item.id === product.id);

@@ -11,6 +11,14 @@ import { PRODUCT_PLACEHOLDER_SRC } from "@/utils/media";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { toFiniteNumber } from "@/services/api";
+import { useAuthStore } from "@/store/auth/authStore";
+import { useAddToCartMutation } from "@/queries/cartQueries";
+import {
+  useAddToWishlistMutation,
+  useRemoveFromWishlistMutation,
+  useWishlistQuery,
+} from "@/queries/wishlistQueries";
+import { QuickOrderModal } from "@/components/UI/QuickOrderModal/QuickOrderModal";
 
 interface ProductCardProps {
   product: AppProduct;
@@ -21,9 +29,15 @@ export const ProductCard = ({
   product,
   viewMode = "grid",
 }: ProductCardProps) => {
-  const addToCart = useCartStore((state) => state.addToCart);
-  const wishlist = useWishlistStore((state) => state.wishlist);
-  const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const addToCartLocal = useCartStore((state) => state.addToCart);
+  const wishlistLocal = useWishlistStore((state) => state.wishlist);
+  const toggleWishlistLocal = useWishlistStore((state) => state.toggleWishlist);
+  const addToCartMutation = useAddToCartMutation();
+  const addToWishlistMutation = useAddToWishlistMutation();
+  const removeFromWishlistMutation = useRemoveFromWishlistMutation();
+  const wishlistQuery = useWishlistQuery(isAuthenticated);
+  const [isQuickOrderOpen, setIsQuickOrderOpen] = useState(false);
   const [failedImageSrcMap, setFailedImageSrcMap] = useState<
     Record<string, true>
   >({});
@@ -39,7 +53,9 @@ export const ProductCard = ({
     ? PRODUCT_PLACEHOLDER_SRC
     : resolvedImageSrc;
 
-  const isWishlisted = wishlist.some((item) => item.id === product.id);
+  const serverWishlist = wishlistQuery.data?.items ?? [];
+  const effectiveWishlist = isAuthenticated ? serverWishlist : wishlistLocal;
+  const isWishlisted = effectiveWishlist.some((item) => item.id === product.id);
   const articleDigits = (product.id ?? "").replace(/\D/g, "");
   const articleCode =
     articleDigits.length > 0
@@ -66,16 +82,66 @@ export const ProductCard = ({
     ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
     : 0;
 
-  const handleAddToCart = (e: React.MouseEvent) => {
+  const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
-    addToCart(product as AppProduct);
+
+    if (isAuthenticated) {
+      try {
+        await addToCartMutation.mutateAsync({
+          productId: product.id,
+          quantity: 1,
+        });
+      } catch {
+        toast.error("Не вдалося додати товар у кошик");
+        return;
+      }
+    } else {
+      addToCartLocal(product as AppProduct);
+    }
+
     toast.success("Товар додано до кошика!");
   };
 
-  const handleToggleWishlist = (e: React.MouseEvent) => {
+  const handleToggleWishlist = async (e: React.MouseEvent) => {
     e.preventDefault();
-    toggleWishlist(product as AppProduct);
+
+    if (isAuthenticated) {
+      try {
+        if (isWishlisted) {
+          await removeFromWishlistMutation.mutateAsync(product.id);
+        } else {
+          await addToWishlistMutation.mutateAsync(product.id);
+        }
+      } catch {
+        toast.error("Не вдалося оновити список бажань");
+        return;
+      }
+    } else {
+      toggleWishlistLocal(product as AppProduct);
+    }
+
     toast.success(isWishlisted ? "Видалено з обраного" : "Додано до обраного");
+  };
+
+  const handleQuickOrder = async (e: React.MouseEvent) => {
+    e.preventDefault();
+
+    if (isAuthenticated) {
+      try {
+        await addToCartMutation.mutateAsync({
+          productId: product.id,
+          quantity: 1,
+        });
+      } catch {
+        toast.error("Не вдалося додати товар у кошик");
+        return;
+      }
+
+      toast.success("Товар додано до кошика!");
+      return;
+    }
+
+    setIsQuickOrderOpen(true);
   };
 
   if (viewMode === "list") {
@@ -181,7 +247,7 @@ export const ProductCard = ({
 
           <button
             className={styles.quickOrderBtn}
-            onClick={handleAddToCart}
+            onClick={handleQuickOrder}
             disabled={!product.inStock}
             title="Швидке замовлення"
           >
@@ -261,6 +327,12 @@ export const ProductCard = ({
           </div>
         </div>
       </Link>
+
+      <QuickOrderModal
+        isOpen={isQuickOrderOpen}
+        onClose={() => setIsQuickOrderOpen(false)}
+        product={product}
+      />
     </>
   );
 };

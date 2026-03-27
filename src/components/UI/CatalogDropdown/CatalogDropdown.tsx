@@ -6,6 +6,7 @@ import { ChevronRight } from "lucide-react";
 
 import { getCategoryProductsCSR } from "@/services/apiClient";
 import type { Category } from "@/types/category";
+import type { CategorySubcategoryLink } from "@/types/category";
 import styles from "./CatalogDropdown.module.css";
 
 interface CatalogDropdownProps {
@@ -17,13 +18,21 @@ interface CatalogDropdownProps {
 interface DropdownProduct {
   id: string;
   name: string;
+  subgroupName: string;
+  subgroupId: string | null;
 }
 
 const DROPDOWN_RATE_LIMIT_BACKOFF_MS = 20000;
 let productsRateLimitedUntil = 0;
 
 const toDropdownProduct = (
-  product: { id?: string; name?: string },
+  product: {
+    id?: string;
+    name?: string;
+    subcategory?: string;
+    category?: string;
+    categoryId?: string;
+  },
   fallbackPrefix: string
 ): DropdownProduct | null => {
   if (!product.name) {
@@ -33,6 +42,24 @@ const toDropdownProduct = (
   return {
     id: product.id ?? `${fallbackPrefix}-${product.name}`,
     name: product.name,
+    subgroupName: product.subcategory ?? product.category ?? "Товари",
+    subgroupId: product.categoryId ?? null,
+  };
+};
+
+const toSubcategoryItem = (
+  item: string | CategorySubcategoryLink
+): { label: string; id: string | null } => {
+  if (typeof item === "string") {
+    return {
+      label: item,
+      id: null,
+    };
+  }
+
+  return {
+    label: item.name ?? item.title ?? "Підкатегорія",
+    id: item.id ?? item._id ?? null,
   };
 };
 
@@ -78,7 +105,18 @@ export const CatalogDropdown = ({
 
       try {
         const products = (await getCategoryProductsCSR(activeCategory, 90))
-          .map((product) => toDropdownProduct(product, activeTab))
+          .map((product) =>
+            toDropdownProduct(
+              product as {
+                id?: string;
+                name?: string;
+                subcategory?: string;
+                category?: string;
+                categoryId?: string;
+              },
+              activeTab
+            )
+          )
           .filter((item): item is DropdownProduct => item !== null);
 
         setProductsByCategory((prev) => ({
@@ -108,6 +146,12 @@ export const CatalogDropdown = ({
     );
   }, [categories, activeTab]);
 
+  const subcategoriesWithLinks = useMemo(() => {
+    return currentSubCats.filter(
+      (group) => Array.isArray(group.links) && group.links.length > 0
+    );
+  }, [currentSubCats]);
+
   const activeCategory = useMemo(() => {
     return categories.find((category) => category.id === activeTab) ?? null;
   }, [categories, activeTab]);
@@ -131,6 +175,59 @@ export const CatalogDropdown = ({
     );
   }, [categoryProducts]);
 
+  const groupedProducts = useMemo(() => {
+    const groups = categoryProducts.reduce<Record<string, DropdownProduct[]>>(
+      (acc, product) => {
+        const key = product.subgroupName.trim() || "Товари";
+        if (!acc[key]) {
+          acc[key] = [];
+        }
+
+        // Keep a compact mega-menu list for each subgroup.
+        if (acc[key].length < 12) {
+          acc[key].push(product);
+        }
+
+        return acc;
+      },
+      {}
+    );
+
+    return Object.entries(groups).map(([name, items]) => ({
+      name,
+      subgroupId: items[0]?.subgroupId ?? null,
+      items,
+    }));
+  }, [categoryProducts]);
+
+  const groupedProductColumns = useMemo(() => {
+    if (groupedProducts.length === 0) {
+      return [[], [], []] as Array<
+        Array<{
+          name: string;
+          subgroupId: string | null;
+          items: DropdownProduct[];
+        }>
+      >;
+    }
+
+    const chunkSize = Math.ceil(groupedProducts.length / 3);
+    return [0, 1, 2].map((index) =>
+      groupedProducts.slice(index * chunkSize, (index + 1) * chunkSize)
+    );
+  }, [groupedProducts]);
+
+  const hasGenericSubcategoriesGroup = useMemo(() => {
+    return (
+      subcategoriesWithLinks.length === 1 &&
+      subcategoriesWithLinks[0].name.trim() === "Підкатегорії"
+    );
+  }, [subcategoriesWithLinks]);
+
+  const shouldRenderGroupedProducts =
+    groupedProducts.length > 0 &&
+    (subcategoriesWithLinks.length === 0 || hasGenericSubcategoriesGroup);
+
   if (!isOpen) {
     return null;
   }
@@ -141,9 +238,7 @@ export const CatalogDropdown = ({
         {categories.map((cat) => (
           <Link
             key={cat.id}
-            href={`/catalog?category=${encodeURIComponent(
-              cat.slug ?? cat.name
-            )}`}
+            href={`/catalog?category=${encodeURIComponent(cat.id)}`}
             onClick={onClose}
             className={`${styles.sidebarItem} ${
               activeTab === cat.id ? styles.active : ""
@@ -159,27 +254,94 @@ export const CatalogDropdown = ({
       </div>
 
       <div className={styles.content}>
-        {currentSubCats.length > 0 ? (
+        {shouldRenderGroupedProducts ? (
+          <div className={styles.columns}>
+            {groupedProductColumns.map((column, columnIndex) => (
+              <div key={columnIndex} className={styles.column}>
+                {column.map((group, groupIndex) => (
+                  <div
+                    key={`${group.name}-${groupIndex}`}
+                    className={styles.group}
+                  >
+                    <h4 className={styles.groupTitle}>
+                      <Link
+                        href={
+                          group.subgroupId
+                            ? `/catalog?category=${encodeURIComponent(
+                                group.subgroupId
+                              )}`
+                            : activeCategory
+                            ? `/catalog?category=${encodeURIComponent(
+                                activeCategory.id
+                              )}`
+                            : "/catalog"
+                        }
+                        onClick={onClose}
+                      >
+                        {group.name}
+                      </Link>
+                    </h4>
+                    <ul className={styles.list}>
+                      {group.items.map((product) => (
+                        <li key={product.id}>
+                          <Link
+                            href={`/product/${encodeURIComponent(product.id)}`}
+                            onClick={onClose}
+                          >
+                            {product.name}
+                          </Link>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        ) : subcategoriesWithLinks.length > 0 ? (
           <div className={styles.columns}>
             {[0, 1, 2].map((columnIndex) => (
               <div key={columnIndex} className={styles.column}>
-                {currentSubCats
+                {subcategoriesWithLinks
                   .slice(columnIndex * 3, columnIndex * 3 + 3)
                   .map((group, idx) => (
                     <div key={`${group.name}-${idx}`} className={styles.group}>
                       <h4 className={styles.groupTitle}>
-                        <Link href="/catalog" onClick={onClose}>
+                        <Link
+                          href={
+                            activeCategory
+                              ? `/catalog?category=${encodeURIComponent(
+                                  activeCategory.id
+                                )}`
+                              : "/catalog"
+                          }
+                          onClick={onClose}
+                        >
                           {group.name}
                         </Link>
                       </h4>
                       <ul className={styles.list}>
-                        {(group.links ?? []).map((item) => (
-                          <li key={item}>
-                            <Link href="/catalog" onClick={onClose}>
-                              {item}
-                            </Link>
-                          </li>
-                        ))}
+                        {(group.links ?? []).map((rawItem, itemIndex) => {
+                          const item = toSubcategoryItem(rawItem);
+                          const categoryParam = item.id ?? activeCategory?.id;
+
+                          return (
+                            <li key={`${item.label}-${itemIndex}`}>
+                              <Link
+                                href={
+                                  categoryParam
+                                    ? `/catalog?category=${encodeURIComponent(
+                                        categoryParam
+                                      )}`
+                                    : "/catalog"
+                                }
+                                onClick={onClose}
+                              >
+                                {item.label}
+                              </Link>
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
                   ))}

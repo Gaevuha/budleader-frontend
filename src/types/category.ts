@@ -1,6 +1,13 @@
+export interface CategorySubcategoryLink {
+  id?: string;
+  _id?: string;
+  name?: string;
+  title?: string;
+}
+
 export interface CategorySubgroup {
   name: string;
-  links: string[];
+  links: Array<string | CategorySubcategoryLink>;
 }
 
 export interface Category {

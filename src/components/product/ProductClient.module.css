@@ -305,7 +305,7 @@
   cursor: not-allowed;
 }
 
-@media (min-width: 768px) {
+@media only screen and (min-width: 768px) {
   .page {
     padding: 20px 0 40px;
   }

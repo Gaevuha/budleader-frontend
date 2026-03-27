@@ -11,12 +11,30 @@ const DEFAULT_APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 const PROXY_PREFIX = "/api/proxy";
 const SERVER_TIMEOUT_MS = 15_000;
+const CATEGORIES_CACHE_TTL_MS = 5 * 60_000;
+const PRODUCTS_CACHE_TTL_MS = 30_000;
+const CATALOG_BACKOFF_MS = 15_000;
 
 interface ProductEnvelope {
   products?: Product[];
   product?: Product;
   pagination?: Pagination;
 }
+
+interface CacheEntry<T> {
+  value: T;
+  expiresAt: number;
+}
+
+type ProductsSSRResult = { products: Product[]; pagination: Pagination | null };
+
+let categoriesCache: CacheEntry<Category[]> | null = null;
+let categoriesInFlight: Promise<Category[]> | null = null;
+let categoriesBackoffUntil = 0;
+
+const productsCache = new Map<string, CacheEntry<ProductsSSRResult>>();
+const productsInFlight = new Map<string, Promise<ProductsSSRResult>>();
+const productsBackoffUntil = new Map<string, number>();
 
 const normalizePagination = (value: unknown): Pagination | null => {
   if (!value || typeof value !== "object") {
@@ -41,6 +59,25 @@ const normalizePagination = (value: unknown): Pagination | null => {
   return { page, limit, total, totalPages };
 };
 
+const extractStatusCode = (error: unknown): number | undefined => {
+  if (!error || typeof error !== "object") {
+    return undefined;
+  }
+
+  const response = (error as { response?: { status?: unknown } }).response;
+  const status = Number(response?.status);
+
+  return Number.isFinite(status) ? status : undefined;
+};
+
+const buildProductsCacheKey = (params: Record<string, unknown>): string => {
+  const entries = Object.entries(params)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .sort(([a], [b]) => a.localeCompare(b));
+
+  return entries.map(([key, value]) => `${key}:${String(value)}`).join("|");
+};
+
 type RawProduct = Product & {
   _id?: string;
   mainImage?: string;
@@ -60,7 +97,10 @@ const resolveServerOrigin = async (): Promise<string> => {
   return `${protocol}://${host}`;
 };
 
-export const createApiServer = async (): Promise<AxiosInstance> => {
+export const createApiServer = async (options?: {
+  logErrors?: boolean;
+}): Promise<AxiosInstance> => {
+  const logErrors = options?.logErrors ?? true;
   const origin = await resolveServerOrigin();
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
@@ -77,7 +117,7 @@ export const createApiServer = async (): Promise<AxiosInstance> => {
   instance.interceptors.response.use(
     (response) => response,
     (error) => {
-      if (process.env.NODE_ENV !== "production") {
+      if (logErrors && process.env.NODE_ENV !== "production") {
         const candidate = error as {
           response?: { status?: number; data?: unknown };
           message?: string;
@@ -125,7 +165,9 @@ const normalizeProductsPayload = (
   if (Array.isArray((candidate as ProductEnvelope).products)) {
     return {
       products: (candidate as ProductEnvelope).products ?? [],
-      pagination: normalizePagination((candidate as ProductEnvelope).pagination),
+      pagination: normalizePagination(
+        (candidate as ProductEnvelope).pagination
+      ),
     };
   }
 
@@ -227,6 +269,7 @@ const normalizeCategories = (raw: unknown): Category[] => {
       _id?: string;
       slug?: string;
       name?: string;
+      groups?: unknown[];
       subcategories?: unknown[];
       productCount?: number;
     };
@@ -238,13 +281,101 @@ const normalizeCategories = (raw: unknown): Category[] => {
       return null;
     }
 
+    const normalizeSubcategories = (
+      value: unknown[] | undefined
+    ): Category["subcategories"] => {
+      if (!Array.isArray(value) || value.length === 0) {
+        return [];
+      }
+
+      // Legacy/grouped shape: [{ name, links: [...] }]
+      const grouped = value.filter(
+        (entry) =>
+          entry &&
+          typeof entry === "object" &&
+          Array.isArray((entry as { links?: unknown }).links)
+      ) as Array<{ name?: string; title?: string; links?: unknown[] }>;
+
+      if (grouped.length > 0) {
+        return grouped.map((group) => ({
+          name: group.name ?? group.title ?? "Підкатегорії",
+          links: (group.links ?? []).map((link) => {
+            if (typeof link === "string") {
+              return link;
+            }
+
+            if (!link || typeof link !== "object") {
+              return "Підкатегорія";
+            }
+
+            const candidate = link as {
+              id?: string;
+              _id?: string;
+              name?: string;
+              title?: string;
+            };
+
+            return {
+              id: candidate.id ?? candidate._id,
+              _id: candidate._id,
+              name: candidate.name,
+              title: candidate.title,
+            };
+          }),
+        }));
+      }
+
+      // Current backend shape: flat subcategories array
+      const links = value
+        .map((entry) => {
+          if (!entry || typeof entry !== "object") {
+            return null;
+          }
+
+          const subcategory = entry as {
+            id?: string;
+            _id?: string;
+            name?: string;
+            title?: string;
+          };
+
+          const id = subcategory.id ?? subcategory._id;
+          const name = subcategory.name ?? subcategory.title;
+
+          if (!id || !name) {
+            return null;
+          }
+
+          return {
+            id,
+            _id: subcategory._id,
+            name,
+            title: subcategory.title,
+          };
+        })
+        .filter(
+          (
+            entry
+          ): entry is {
+            id: string;
+            _id?: string;
+            name: string;
+            title?: string;
+          } => entry !== null
+        );
+
+      return links.length > 0 ? [{ name: "Підкатегорії", links }] : [];
+    };
+
     return {
       id,
       name,
       slug: rawCategory.slug,
-      subcategories: Array.isArray(rawCategory.subcategories)
-        ? (rawCategory.subcategories as Category["subcategories"])
-        : [],
+      subcategories: normalizeSubcategories(
+        Array.isArray(rawCategory.groups)
+          ? rawCategory.groups
+          : rawCategory.subcategories
+      ),
       productsCount: rawCategory.productCount,
     };
   };
@@ -292,8 +423,6 @@ export async function getProductsSSR(params?: {
   order?: "asc" | "desc" | string;
   search?: string;
 }): Promise<{ products: Product[]; pagination: Pagination | null }> {
-  const serverApi = await createApiServer();
-
   // Remap to backend field names
   const { isNew, isSale, ...rest } = params ?? {};
   const queryParams = {
@@ -302,11 +431,57 @@ export async function getProductsSSR(params?: {
     ...(isSale ? { isOnSale: "true" } : {}),
   };
 
-  const response = await serverApi.get<
-    ApiResponse<ProductEnvelope> | ProductEnvelope
-  >("api/products", { params: queryParams });
+  const key = buildProductsCacheKey(queryParams as Record<string, unknown>);
+  const now = Date.now();
 
-  return normalizeProductsResult(normalizeProductsPayload(response.data));
+  const cached = productsCache.get(key);
+  if (cached && cached.expiresAt > now) {
+    return cached.value;
+  }
+
+  const backoffUntil = productsBackoffUntil.get(key) ?? 0;
+  if (backoffUntil > now) {
+    return cached?.value ?? { products: [], pagination: null };
+  }
+
+  const inFlight = productsInFlight.get(key);
+  if (inFlight) {
+    return inFlight;
+  }
+
+  const serverApi = await createApiServer({ logErrors: false });
+
+  const requestPromise: Promise<ProductsSSRResult> = (async () => {
+    try {
+      const response = await serverApi.get<
+        ApiResponse<ProductEnvelope> | ProductEnvelope
+      >("api/products", { params: queryParams });
+
+      const normalized = normalizeProductsResult(
+        normalizeProductsPayload(response.data)
+      );
+
+      productsCache.set(key, {
+        value: normalized,
+        expiresAt: Date.now() + PRODUCTS_CACHE_TTL_MS,
+      });
+
+      return normalized;
+    } catch (error) {
+      if (extractStatusCode(error) === 429) {
+        productsBackoffUntil.set(key, Date.now() + CATALOG_BACKOFF_MS);
+        return cached?.value ?? { products: [], pagination: null };
+      }
+
+      throw error;
+    } finally {
+      productsInFlight.delete(key);
+    }
+  })();
+
+  productsInFlight.set(key, requestPromise);
+
+  return requestPromise;
 }
 
 export async function getProductByIdSSR(id: string): Promise<Product | null> {
@@ -324,14 +499,70 @@ export async function getProductByIdSSR(id: string): Promise<Product | null> {
 }
 
 export async function getCategories(): Promise<Category[]> {
-  try {
-    const serverApi = await createApiServer();
-    const response = await serverApi.get<
-      ApiResponse<CategoriesData> | CategoriesData | Category[]
-    >("api/categories");
+  const now = Date.now();
 
-    return normalizeCategories(response.data);
-  } catch {
-    return [];
+  if (categoriesCache && categoriesCache.expiresAt > now) {
+    return categoriesCache.value;
   }
+
+  if (categoriesBackoffUntil > now) {
+    return categoriesCache?.value ?? [];
+  }
+
+  if (categoriesInFlight) {
+    return categoriesInFlight;
+  }
+
+  categoriesInFlight = (async () => {
+    try {
+      const serverApi = await createApiServer({ logErrors: false });
+
+      // Preferred endpoint for direct mega-menu shape: category -> groups -> links.
+      try {
+        const megaMenuResponse = await serverApi.get<unknown>(
+          "api/categories/mega-menu"
+        );
+        const normalizedMegaMenu = normalizeCategories(megaMenuResponse.data);
+
+        if (normalizedMegaMenu.length > 0) {
+          categoriesCache = {
+            value: normalizedMegaMenu,
+            expiresAt: Date.now() + CATEGORIES_CACHE_TTL_MS,
+          };
+          return normalizedMegaMenu;
+        }
+      } catch (error) {
+        // If backend is rate-limiting categories, avoid firing a second
+        // immediate request to the legacy endpoint.
+        if (extractStatusCode(error) === 429) {
+          categoriesBackoffUntil = Date.now() + CATALOG_BACKOFF_MS;
+          return categoriesCache?.value ?? [];
+        }
+
+        // Fallback to legacy categories endpoint.
+      }
+
+      const legacyResponse = await serverApi.get<
+        ApiResponse<CategoriesData> | CategoriesData | Category[]
+      >("api/categories");
+
+      const normalized = normalizeCategories(legacyResponse.data);
+      categoriesCache = {
+        value: normalized,
+        expiresAt: Date.now() + CATEGORIES_CACHE_TTL_MS,
+      };
+
+      return normalized;
+    } catch (error) {
+      if (extractStatusCode(error) === 429) {
+        categoriesBackoffUntil = Date.now() + CATALOG_BACKOFF_MS;
+      }
+
+      return categoriesCache?.value ?? [];
+    } finally {
+      categoriesInFlight = null;
+    }
+  })();
+
+  return categoriesInFlight;
 }

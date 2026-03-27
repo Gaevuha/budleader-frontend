@@ -16,6 +16,12 @@ import { mapApiProductToAppProduct } from "@/services/api";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { useAuthStore } from "@/store/auth/authStore";
+import { useAddToCartMutation } from "@/queries/cartQueries";
+import {
+  useAddToWishlistMutation,
+  useRemoveFromWishlistMutation,
+  useWishlistQuery,
+} from "@/queries/wishlistQueries";
 
 interface ProductClientProps {
   product: Product;
@@ -26,10 +32,15 @@ type RawProduct = Product & {
 };
 
 export function ProductClient({ product }: ProductClientProps) {
-  const addToCart = useCartStore((state) => state.addToCart);
-  const wishlist = useWishlistStore((state) => state.wishlist);
-  const toggleWishlist = useWishlistStore((state) => state.toggleWishlist);
+  const addToCartLocal = useCartStore((state) => state.addToCart);
+  const wishlistLocal = useWishlistStore((state) => state.wishlist);
+  const toggleWishlistLocal = useWishlistStore((state) => state.toggleWishlist);
+  const addToCartMutation = useAddToCartMutation();
+  const addToWishlistMutation = useAddToWishlistMutation();
+  const removeFromWishlistMutation = useRemoveFromWishlistMutation();
+  const wishlistQuery = useWishlistQuery(isAuthenticated);
   const currentUser = useAuthStore((state) => state.user);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 
   const [reviewText, setReviewText] = useState("");
   const [selectedRating, setSelectedRating] = useState(5);
@@ -59,16 +70,47 @@ export function ProductClient({ product }: ProductClientProps) {
     };
   }, [product]);
 
-  const isWishlisted = wishlist.some((item) => item.id === appProduct.id);
+  const serverWishlist = wishlistQuery.data?.items ?? [];
+  const effectiveWishlist = isAuthenticated ? serverWishlist : wishlistLocal;
+  const isWishlisted = effectiveWishlist.some(
+    (item) => item.id === appProduct.id
+  );
   const imageSrc = imageFailed ? PRODUCT_PLACEHOLDER_SRC : appProduct.image;
 
-  const handleAddToCart = () => {
-    addToCart(appProduct);
+  const handleAddToCart = async () => {
+    if (isAuthenticated) {
+      try {
+        await addToCartMutation.mutateAsync({
+          productId: appProduct.id,
+          quantity: 1,
+        });
+      } catch {
+        toast.error("Не вдалося додати товар у кошик");
+        return;
+      }
+    } else {
+      addToCartLocal(appProduct);
+    }
+
     toast.success("Товар додано у кошик");
   };
 
-  const handleToggleWishlist = () => {
-    toggleWishlist(appProduct);
+  const handleToggleWishlist = async () => {
+    if (isAuthenticated) {
+      try {
+        if (isWishlisted) {
+          await removeFromWishlistMutation.mutateAsync(appProduct.id);
+        } else {
+          await addToWishlistMutation.mutateAsync(appProduct.id);
+        }
+      } catch {
+        toast.error("Не вдалося оновити список бажань");
+        return;
+      }
+    } else {
+      toggleWishlistLocal(appProduct);
+    }
+
     toast.success(isWishlisted ? "Видалено з обраного" : "Додано до обраного");
   };
 
@@ -156,7 +198,9 @@ export function ProductClient({ product }: ProductClientProps) {
         <Link href="/catalog">Каталог</Link>
         <span>/</span>
         <Link
-          href={`/catalog?category=${encodeURIComponent(appProduct.category)}`}
+          href={`/catalog?category=${encodeURIComponent(
+            appProduct.categoryId ?? appProduct.category
+          )}`}
         >
           {appProduct.category}
         </Link>

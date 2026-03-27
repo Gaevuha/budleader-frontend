@@ -1,7 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import ReactPaginate from "react-paginate";
 
 import { Container } from "@/components/layout/Container/Container";
@@ -10,19 +12,25 @@ import { CatalogToolbar } from "./CatalogToolbar";
 import { ProductList } from "./ProductList";
 import type { AppProduct } from "@/types/app";
 import type { Pagination } from "@/types/api";
+import type { Category } from "@/types/category";
+import type { CategorySubcategoryLink } from "@/types/category";
 import type { Product } from "@/types/product";
 import { mapApiProductToAppProduct } from "@/services/api";
 import { getProductsCSR } from "@/services/apiClient";
+import { useDebounce } from "@/hooks/useDebounce";
 import styles from "@/components/catalog/Catalog.module.css";
 
 interface CatalogClientProps {
+  categories: Category[];
   initialProducts: Product[];
   initialFilterProducts: Product[];
+  initialBrandCounts?: Record<string, number>;
   initialPagination: Pagination | null;
   initialCategory?: string;
   initialBrands?: string[];
   initialIsNew?: boolean;
   initialIsSale?: boolean;
+  initialSearch?: string;
 }
 
 interface PageChangeEvent {
@@ -34,127 +42,43 @@ const PAGE_LIMIT = 12;
 const normalizeToken = (value: string): string =>
   decodeURIComponent(value).trim().toLowerCase();
 
+const normalizeBrandLabel = (value: string): string => {
+  return value.trim().replace(/\s+/g, " ");
+};
+
+const normalizeBrandKey = (value: string): string => {
+  return normalizeBrandLabel(value).toLocaleLowerCase("uk");
+};
+
+const normalizeSearchText = (value: string): string => {
+  return value.trim().toLocaleLowerCase("uk");
+};
+
 export function CatalogClient({
+  categories,
   initialProducts,
   initialFilterProducts,
+  initialBrandCounts,
   initialPagination,
   initialCategory = "",
   initialBrands = [],
   initialIsNew = false,
   initialIsSale = false,
+  initialSearch = "",
 }: CatalogClientProps) {
-  const firstPageProducts = useMemo(
+  const router = useRouter();
+  const pathname = usePathname();
+  const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const debouncedSearchTerm = useDebounce(searchTerm, 350);
+
+  const initialProductsMapped = useMemo(
     () =>
       initialProducts
         .map((product) => mapApiProductToAppProduct(product))
         .filter((product): product is AppProduct => product !== null),
     [initialProducts]
   );
-
-  const [products, setProducts] = useState<AppProduct[]>(firstPageProducts);
-  const [pagination, setPagination] = useState<Pagination | null>(
-    initialPagination
-  );
   const [currentPage, setCurrentPage] = useState(1);
-  const [isPageLoading, setIsPageLoading] = useState(false);
-
-  // Effective server-side filters — may differ from URL params when the user
-  // toggles isNew/isSale checkboxes in the sidebar.
-  const [effectiveIsNew, setEffectiveIsNew] = useState(initialIsNew);
-  const [effectiveIsSale, setEffectiveIsSale] = useState(initialIsSale);
-  const [effectiveBrands, setEffectiveBrands] =
-    useState<string[]>(initialBrands);
-  // Incremented to force re-fetch when page stays at 1 but effective filters change.
-  const [refreshKey, setRefreshKey] = useState(0);
-
-  // Only pre-seed page 1 cache from SSR when no server-side filters are active.
-  // If filters are active (isNew/isSale), the SSR data is already filtered and
-  // correct, so we can safely seed the cache.
-  const pageCacheRef = useRef<Map<number, AppProduct[]>>(
-    new Map([[1, firstPageProducts]])
-  );
-
-  useEffect(() => {
-    pageCacheRef.current.set(1, firstPageProducts);
-    setProducts(firstPageProducts);
-    setPagination(initialPagination);
-    setCurrentPage(1);
-    setSelectedBrands(initialBrands);
-    setEffectiveBrands(initialBrands);
-    setIsNewOnly(initialIsNew);
-    setIsSaleOnly(initialIsSale);
-    setEffectiveIsNew(initialIsNew);
-    setEffectiveIsSale(initialIsSale);
-  }, [
-    firstPageProducts,
-    initialPagination,
-    initialBrands,
-    initialIsNew,
-    initialIsSale,
-  ]);
-
-  useEffect(() => {
-    let isCancelled = false;
-
-    const loadPage = async () => {
-      // Check cache first — for page 1 this is pre-populated with SSR data.
-      // When effective filters change the cache is cleared before this runs.
-      const cachedPage = pageCacheRef.current.get(currentPage);
-      if (cachedPage) {
-        setProducts(cachedPage);
-        return;
-      }
-
-      try {
-        setIsPageLoading(true);
-
-        const { products: nextProducts, pagination: nextPagination } =
-          await getProductsCSR({
-            page: currentPage,
-            limit: PAGE_LIMIT,
-            category: initialCategory || undefined,
-            brand:
-              effectiveBrands.length > 0
-                ? effectiveBrands.join(",")
-                : undefined,
-            isNew: effectiveIsNew || undefined,
-            isSale: effectiveIsSale || undefined,
-          });
-
-        if (isCancelled) {
-          return;
-        }
-
-        pageCacheRef.current.set(currentPage, nextProducts);
-        setProducts(nextProducts);
-        setPagination(nextPagination ?? null);
-      } catch (err) {
-        console.error("[CatalogClient] page", currentPage, "load error:", err);
-        if (!isCancelled) {
-          setProducts([]);
-        }
-      } finally {
-        if (!isCancelled) {
-          setIsPageLoading(false);
-        }
-      }
-    };
-
-    void loadPage();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [
-    currentPage,
-    refreshKey,
-    initialCategory,
-    initialPagination,
-    effectiveBrands,
-    effectiveIsNew,
-    effectiveIsSale,
-  ]);
-
   const [selectedBrands, setSelectedBrands] = useState<string[]>(initialBrands);
   const [inStockOnly, setInStockOnly] = useState(false);
   const [isNewOnly, setIsNewOnly] = useState(initialIsNew);
@@ -164,24 +88,12 @@ export function CatalogClient({
   const [sortOrder, setSortOrder] = useState("default");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
 
-  // Triggers a fresh server fetch for isNew/isSale — the DB fields
-  // (isNewProduct, isOnSale) are not reliably present on all records, so
-  // client-side re-filtering would silently drop all products.
-  const handleIsNewChange = useCallback((value: boolean) => {
-    setIsNewOnly(value);
-    pageCacheRef.current.clear();
-    setEffectiveIsNew(value);
-    setCurrentPage(1);
-    setRefreshKey((k) => k + 1);
-  }, []);
-
-  const handleIsSaleChange = useCallback((value: boolean) => {
-    setIsSaleOnly(value);
-    pageCacheRef.current.clear();
-    setEffectiveIsSale(value);
-    setCurrentPage(1);
-    setRefreshKey((k) => k + 1);
-  }, []);
+  // Effective server-side filters — may differ from URL params when the user
+  // toggles isNew/isSale checkboxes in the sidebar.
+  const [effectiveIsNew, setEffectiveIsNew] = useState(initialIsNew);
+  const [effectiveIsSale, setEffectiveIsSale] = useState(initialIsSale);
+  const [effectiveBrands, setEffectiveBrands] =
+    useState<string[]>(initialBrands);
 
   const filterSourceProducts = useMemo(
     () =>
@@ -191,32 +103,203 @@ export function CatalogClient({
     [initialFilterProducts]
   );
 
+  const productsQuery = useQuery({
+    queryKey: [
+      "catalog-products",
+      currentPage,
+      initialCategory,
+      effectiveBrands.join(","),
+      effectiveIsNew,
+      effectiveIsSale,
+      debouncedSearchTerm,
+    ],
+    queryFn: async () => {
+      const result = await getProductsCSR({
+        page: currentPage,
+        limit: PAGE_LIMIT,
+        category: initialCategory || undefined,
+        brand:
+          effectiveBrands.length > 0 ? effectiveBrands.join(",") : undefined,
+        isNew: effectiveIsNew || undefined,
+        isSale: effectiveIsSale || undefined,
+        search: debouncedSearchTerm || undefined,
+      });
+
+      const normalizedSearch = normalizeSearchText(debouncedSearchTerm);
+      const shouldUseLocalFallback =
+        normalizedSearch.length > 0 && result.products.length === 0;
+
+      if (shouldUseLocalFallback && filterSourceProducts.length > 0) {
+        const matched = filterSourceProducts.filter((product) =>
+          normalizeSearchText(product.name).includes(normalizedSearch)
+        );
+
+        const total = matched.length;
+        const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
+        const safePage = Math.min(Math.max(currentPage, 1), totalPages);
+        const start = (safePage - 1) * PAGE_LIMIT;
+        const fallbackPage = matched.slice(start, start + PAGE_LIMIT);
+
+        return {
+          products: fallbackPage,
+          pagination: {
+            page: safePage,
+            limit: PAGE_LIMIT,
+            total,
+            totalPages,
+          },
+        };
+      }
+
+      return result;
+    },
+    // Keep first paint SEO-friendly with SSR list, then switch to CSR updates.
+    initialData:
+      currentPage === 1 &&
+      initialPagination &&
+      debouncedSearchTerm.trim().length === 0 &&
+      effectiveBrands.length === initialBrands.length &&
+      effectiveIsNew === initialIsNew &&
+      effectiveIsSale === initialIsSale
+        ? {
+            products: initialProductsMapped,
+            pagination: initialPagination,
+          }
+        : undefined,
+    placeholderData: keepPreviousData,
+  });
+
+  const products = useMemo(
+    () => productsQuery.data?.products ?? [],
+    [productsQuery.data?.products]
+  );
+  const pagination = useMemo(
+    () => productsQuery.data?.pagination ?? null,
+    [productsQuery.data?.pagination]
+  );
+
+  useEffect(() => {
+    const handleHeaderSearch = (event: Event) => {
+      const detail = (event as CustomEvent<string>).detail;
+      const nextSearch = typeof detail === "string" ? detail : "";
+
+      setSearchTerm(nextSearch);
+      setSelectedBrands([]);
+      setEffectiveBrands([]);
+      setIsNewOnly(false);
+      setIsSaleOnly(false);
+      setEffectiveIsNew(false);
+      setEffectiveIsSale(false);
+      setCurrentPage(1);
+    };
+
+    window.addEventListener(
+      "catalog-search-change",
+      handleHeaderSearch as EventListener
+    );
+
+    return () => {
+      window.removeEventListener(
+        "catalog-search-change",
+        handleHeaderSearch as EventListener
+      );
+    };
+  }, []);
+
+  // Triggers a fresh server fetch for isNew/isSale — the DB fields
+  // (isNewProduct, isOnSale) are not reliably present on all records, so
+  // client-side re-filtering would silently drop all products.
+  const handleIsNewChange = useCallback((value: boolean) => {
+    setIsNewOnly(value);
+    setEffectiveIsNew(value);
+    setCurrentPage(1);
+  }, []);
+
+  const handleIsSaleChange = useCallback((value: boolean) => {
+    setIsSaleOnly(value);
+    setEffectiveIsSale(value);
+    setCurrentPage(1);
+  }, []);
+
+  const handleInStockChange = useCallback((value: boolean) => {
+    setInStockOnly(value);
+    setCurrentPage(1);
+  }, []);
+
+  const facetSourceProducts = useMemo(() => {
+    if (filterSourceProducts.length > 0) {
+      return filterSourceProducts;
+    }
+
+    if (products.length > 0) {
+      return products;
+    }
+
+    return initialProductsMapped;
+  }, [filterSourceProducts, products, initialProductsMapped]);
+
+  const brandFacets = useMemo(() => {
+    const facets = new Map<string, { label: string; count: number }>();
+
+    for (const product of facetSourceProducts) {
+      if (!product.brand) {
+        continue;
+      }
+
+      const label = normalizeBrandLabel(product.brand);
+      const key = normalizeBrandKey(label);
+      const current = facets.get(key);
+
+      if (!current) {
+        facets.set(key, { label, count: 1 });
+        continue;
+      }
+
+      // Keep a readable casing if available while merging case variants.
+      if (
+        current.label === current.label.toUpperCase() &&
+        label !== label.toUpperCase()
+      ) {
+        current.label = label;
+      }
+
+      current.count += 1;
+    }
+
+    return Array.from(facets.values()).sort((a, b) =>
+      a.label.localeCompare(b.label, "uk")
+    );
+  }, [facetSourceProducts]);
+
   const brands = useMemo(() => {
-    return Array.from(
-      new Set(
-        filterSourceProducts
-          .map((product) => product.brand)
-          .filter((value): value is string => Boolean(value))
-      )
-    ).sort((a, b) => a.localeCompare(b, "uk"));
-  }, [filterSourceProducts]);
+    return brandFacets.map((facet) => facet.label);
+  }, [brandFacets]);
 
   const brandCounts = useMemo(() => {
-    return filterSourceProducts.reduce<Record<string, number>>(
-      (acc, product) => {
-        if (!product.brand) {
-          return acc;
-        }
-
-        acc[product.brand] = (acc[product.brand] ?? 0) + 1;
+    if (!initialBrandCounts || Object.keys(initialBrandCounts).length === 0) {
+      return brandFacets.reduce<Record<string, number>>((acc, facet) => {
+        acc[facet.label] = facet.count;
         return acc;
-      },
-      {}
-    );
-  }, [filterSourceProducts]);
+      }, {});
+    }
+
+    const backendByKey = Object.entries(initialBrandCounts).reduce<
+      Record<string, number>
+    >((acc, [label, count]) => {
+      acc[normalizeBrandKey(label)] = count;
+      return acc;
+    }, {});
+
+    return brandFacets.reduce<Record<string, number>>((acc, facet) => {
+      const backendCount = backendByKey[normalizeBrandKey(facet.label)];
+      acc[facet.label] =
+        typeof backendCount === "number" ? backendCount : facet.count;
+      return acc;
+    }, {});
+  }, [brandFacets, initialBrandCounts]);
 
   const priceBounds = useMemo(() => {
-    const prices = filterSourceProducts
+    const prices = facetSourceProducts
       .map((product) => product.price)
       .filter((price) => Number.isFinite(price));
 
@@ -228,17 +311,17 @@ export function CatalogClient({
       min: Math.min(...prices),
       max: Math.max(...prices),
     };
-  }, [filterSourceProducts]);
+  }, [facetSourceProducts]);
 
   const filterCounts = useMemo(
     () => ({
-      inStock: filterSourceProducts.filter((product) => product.inStock).length,
-      isNew: filterSourceProducts.filter((product) => product.isNew).length,
-      isSale: filterSourceProducts.filter(
+      inStock: facetSourceProducts.filter((product) => product.inStock).length,
+      isNew: facetSourceProducts.filter((product) => product.isNew).length,
+      isSale: facetSourceProducts.filter(
         (product) => product.isSale || Boolean(product.oldPrice)
       ).length,
     }),
-    [filterSourceProducts]
+    [facetSourceProducts]
   );
 
   const filteredProducts = useMemo(() => {
@@ -248,9 +331,13 @@ export function CatalogClient({
     const base = products.filter((product) => {
       if (initialCategory) {
         const productCategory = normalizeToken(product.category ?? "");
+        const productCategoryId = normalizeToken(product.categoryId ?? "");
         const categoryToken = normalizeToken(initialCategory);
 
-        if (productCategory !== categoryToken) {
+        if (
+          productCategory !== categoryToken &&
+          productCategoryId !== categoryToken
+        ) {
           return false;
         }
       }
@@ -290,62 +377,169 @@ export function CatalogClient({
 
   const handleToggleBrand = useCallback((brand: string) => {
     setSelectedBrands((prev) => {
-      const next = prev.includes(brand)
-        ? prev.filter((item) => item !== brand)
-        : [...prev, brand];
+      const normalizedBrand = normalizeBrandLabel(brand);
+      const next = prev.includes(normalizedBrand)
+        ? prev.filter((item) => item !== normalizedBrand)
+        : [...prev, normalizedBrand];
 
-      pageCacheRef.current.clear();
       setEffectiveBrands(next);
       setCurrentPage(1);
-      setRefreshKey((k) => k + 1);
 
       return next;
     });
   }, []);
 
+  const normalizeCatalogUrl = useCallback(() => {
+    const query = new URLSearchParams();
+
+    if (initialCategory) {
+      query.set("category", initialCategory);
+    }
+
+    if (searchTerm.trim()) {
+      query.set("search", searchTerm.trim());
+    }
+
+    const queryString = query.toString();
+    const basePath = pathname || "/catalog";
+    return queryString ? `${basePath}?${queryString}` : basePath;
+  }, [initialCategory, pathname, searchTerm]);
+
   const clearFilters = () => {
-    setSelectedBrands(initialBrands);
+    setSelectedBrands([]);
     setInStockOnly(false);
     setMinPrice("");
     setMaxPrice("");
-    setIsNewOnly(initialIsNew);
-    setIsSaleOnly(initialIsSale);
+    setIsNewOnly(false);
+    setIsSaleOnly(false);
 
-    const isBrandChanged =
-      selectedBrands.length !== initialBrands.length ||
-      selectedBrands.some((brand) => !initialBrands.includes(brand));
+    setEffectiveBrands([]);
+    setEffectiveIsNew(false);
+    setEffectiveIsSale(false);
+    setCurrentPage(1);
 
-    if (
-      isBrandChanged ||
-      effectiveIsNew !== initialIsNew ||
-      effectiveIsSale !== initialIsSale
-    ) {
-      pageCacheRef.current.clear();
-      pageCacheRef.current.set(1, firstPageProducts);
-      setEffectiveBrands(initialBrands);
-      setEffectiveIsNew(initialIsNew);
-      setEffectiveIsSale(initialIsSale);
-      setProducts(firstPageProducts);
-      setPagination(initialPagination);
-      setCurrentPage(1);
-    }
+    router.replace(normalizeCatalogUrl(), { scroll: false });
   };
 
-  const breadcrumbTail = useMemo(() => {
-    if (initialCategory) {
-      return initialCategory;
+  const handleMinPriceChange = useCallback(
+    (value: string) => {
+      // Price search starts a fresh filtering flow from page 1.
+      setSelectedBrands([]);
+      setInStockOnly(false);
+      setIsNewOnly(false);
+      setIsSaleOnly(false);
+      setEffectiveBrands([]);
+      setEffectiveIsNew(false);
+      setEffectiveIsSale(false);
+      setMinPrice(value);
+      setCurrentPage(1);
+      router.replace(normalizeCatalogUrl(), { scroll: false });
+    },
+    [normalizeCatalogUrl, router]
+  );
+
+  const handleMaxPriceChange = useCallback(
+    (value: string) => {
+      // Price search starts a fresh filtering flow from page 1.
+      setSelectedBrands([]);
+      setInStockOnly(false);
+      setIsNewOnly(false);
+      setIsSaleOnly(false);
+      setEffectiveBrands([]);
+      setEffectiveIsNew(false);
+      setEffectiveIsSale(false);
+      setMaxPrice(value);
+      setCurrentPage(1);
+      router.replace(normalizeCatalogUrl(), { scroll: false });
+    },
+    [normalizeCatalogUrl, router]
+  );
+
+  const breadcrumbSegments = (() => {
+    if (!initialCategory) {
+      if (searchTerm.trim()) {
+        return [`Пошук: ${searchTerm.trim()}`];
+      }
+
+      if (initialIsNew) {
+        return ["Новинки"];
+      }
+
+      if (initialIsSale) {
+        return ["Акції"];
+      }
+
+      return ["Каталог"];
     }
 
-    if (initialIsNew) {
-      return "Новинки";
+    const token = normalizeToken(initialCategory);
+    const categoryById = categories.find(
+      (category) => normalizeToken(category.id) === token
+    );
+
+    if (categoryById) {
+      return [categoryById.name];
     }
 
-    if (initialIsSale) {
-      return "Акції";
+    for (const category of categories) {
+      for (const subgroup of category.subcategories ?? []) {
+        for (const rawLink of subgroup.links ?? []) {
+          const item =
+            typeof rawLink === "string"
+              ? { id: null, label: rawLink }
+              : {
+                  id:
+                    (rawLink as CategorySubcategoryLink).id ??
+                    (rawLink as CategorySubcategoryLink)._id ??
+                    null,
+                  label:
+                    (rawLink as CategorySubcategoryLink).name ??
+                    (rawLink as CategorySubcategoryLink).title ??
+                    "Підкатегорія",
+                };
+
+          if (item.id && normalizeToken(item.id) === token) {
+            const subgroupName = subgroup.name?.trim();
+            const isGenericSubgroup = subgroupName === "Підкатегорії";
+
+            return isGenericSubgroup
+              ? [category.name, item.label]
+              : [category.name, subgroup.name, item.label];
+          }
+        }
+      }
     }
 
-    return "";
-  }, [initialCategory, initialIsNew, initialIsSale]);
+    // Fallback for legacy links that can carry slug/name values instead of IDs.
+    for (const category of categories) {
+      if (
+        normalizeToken(category.name) === token ||
+        normalizeToken(category.slug ?? "") === token
+      ) {
+        return [category.name];
+      }
+
+      for (const subgroup of category.subcategories ?? []) {
+        for (const rawLink of subgroup.links ?? []) {
+          const label =
+            typeof rawLink === "string"
+              ? rawLink
+              : rawLink.name ?? rawLink.title ?? "";
+
+          if (normalizeToken(label) === token) {
+            const subgroupName = subgroup.name?.trim();
+            const isGenericSubgroup = subgroupName === "Підкатегорії";
+
+            return isGenericSubgroup
+              ? [category.name, label]
+              : [category.name, subgroup.name, label];
+          }
+        }
+      }
+    }
+
+    return [initialCategory];
+  })();
 
   const pageCount = Math.max(1, pagination?.totalPages ?? 1);
   const shouldShowPagination = pageCount > 1;
@@ -364,15 +558,20 @@ export function CatalogClient({
       <div className={styles.breadcrumbs}>
         <Link href="/">Головна</Link>
         <span>/</span>
-        {breadcrumbTail ? (
-          <>
-            <Link href="/catalog">Каталог</Link>
-            <span>/</span>
-            <span className={styles.currentCrumb}>{breadcrumbTail}</span>
-          </>
-        ) : (
-          <span className={styles.currentCrumb}>Каталог</span>
-        )}
+        {breadcrumbSegments.map((segment, index) => (
+          <span key={`${segment}-${index}`}>
+            <span
+              className={
+                index === breadcrumbSegments.length - 1
+                  ? styles.currentCrumb
+                  : undefined
+              }
+            >
+              {segment}
+            </span>
+            {index < breadcrumbSegments.length - 1 ? <span> / </span> : null}
+          </span>
+        ))}
       </div>
 
       <div className={styles.layout}>
@@ -382,7 +581,7 @@ export function CatalogClient({
           selectedBrands={selectedBrands}
           onToggleBrand={handleToggleBrand}
           inStockOnly={inStockOnly}
-          onInStockChange={setInStockOnly}
+          onInStockChange={handleInStockChange}
           isNewOnly={isNewOnly}
           onIsNewChange={handleIsNewChange}
           isSaleOnly={isSaleOnly}
@@ -394,8 +593,8 @@ export function CatalogClient({
           inStockCount={filterCounts.inStock}
           isNewCount={filterCounts.isNew}
           isSaleCount={filterCounts.isSale}
-          onMinPriceChange={setMinPrice}
-          onMaxPriceChange={setMaxPrice}
+          onMinPriceChange={handleMinPriceChange}
+          onMaxPriceChange={handleMaxPriceChange}
           onReset={clearFilters}
         />
 
@@ -406,14 +605,10 @@ export function CatalogClient({
             sortOrder={sortOrder}
             onSortOrderChange={setSortOrder}
             productsCount={pagination?.total ?? filteredProducts.length}
-            title={
-              initialCategory
-                ? `Каталог: ${initialCategory}`
-                : "Каталог товарів"
-            }
+            title={breadcrumbSegments[breadcrumbSegments.length - 1]}
           />
 
-          {isPageLoading && (
+          {productsQuery.isFetching && (
             <div className={styles.pageLoader} role="status" aria-live="polite">
               Завантаження сторінки...
             </div>

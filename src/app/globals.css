@@ -8,6 +8,7 @@
   --color-primary: var(--primary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary-hover: var(--primary-hover);
+  --color-accent: var(--accent);
 
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
@@ -32,6 +33,7 @@
     --primary: #1fa64a;
     --primary-foreground: #ffffff;
     --primary-hover: #16863b;
+    --accent: #22b573;
 
     --secondary: #f4f4f5;
     --secondary-foreground: #1fa64a;
@@ -53,6 +55,7 @@
     --primary: #1fa64a;
     --primary-foreground: #ffffff;
     --primary-hover: #16863b;
+    --accent: #1f8a5a;
 
     --secondary: #1e293b;
     --secondary-foreground: #1fa64a;

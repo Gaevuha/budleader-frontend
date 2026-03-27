@@ -72,9 +72,10 @@
 
 .cartItem {
   display: grid;
-  grid-template-columns: 80px 1fr auto auto auto;
+  grid-template-columns: 80px 1fr auto;
+  grid-template-rows: auto auto;
   align-items: center;
-  gap: 16px;
+  gap: 12px;
   padding: 16px;
   background-color: var(--background);
   border: 1px solid var(--border);
@@ -100,6 +101,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  grid-column: 2 / -1;
 }
 
 .itemName {
@@ -154,7 +156,9 @@
   font-weight: 700;
   color: var(--foreground);
   min-width: 100px;
-  text-align: right;
+  text-align: left;
+  display: flex;
+  align-items: center;
 }
 
 .removeBtn {
@@ -218,37 +222,44 @@
   width: 100%;
 }
 
-@media (max-width: 767px) {
+.quantityControls {
+  grid-column: 1 / 2;
+  grid-row: 2;
+}
+
+.removeBtn {
+  grid-column: 3 / 4;
+  grid-row: 2;
+}
+
+@media only screen and (min-width: 768px) {
   .cartItem {
-    grid-template-columns: 80px 1fr auto;
-    grid-template-rows: auto auto;
-    gap: 12px;
+    grid-template-columns: 80px 1fr auto auto auto;
+    grid-template-rows: auto;
+    gap: 16px;
   }
 
   .itemInfo {
-    grid-column: 2 / -1;
+    grid-column: auto;
   }
 
   .quantityControls {
-    grid-column: 1 / 2;
-    grid-row: 2;
+    grid-column: auto;
+    grid-row: auto;
   }
 
   .itemTotal {
-    grid-column: 2 / 3;
-    grid-row: 2;
-    text-align: left;
-    display: flex;
-    align-items: center;
+    text-align: right;
+    display: block;
   }
 
   .removeBtn {
-    grid-column: 3 / 4;
-    grid-row: 2;
+    grid-column: auto;
+    grid-row: auto;
   }
 }
 
-@media (min-width: 1024px) {
+@media only screen and (min-width: 1440px) {
   .layout {
     grid-template-columns: 2fr 1fr;
   }

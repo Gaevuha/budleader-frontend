@@ -451,14 +451,14 @@
 }
 
 /* Responsive */
-@media (min-width: 768px) {
+@media only screen and (min-width: 768px) {
   .grid {
     grid-template-columns: repeat(3, 1fr);
     gap: 20px;
   }
 }
 
-@media (min-width: 1024px) {
+@media only screen and (min-width: 1440px) {
   .layout {
     grid-template-columns: 320px 1fr;
   }
@@ -483,12 +483,6 @@
     display: none;
   }
 
-  .grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-}
-
-@media (min-width: 1280px) {
   .grid {
     grid-template-columns: repeat(4, 1fr);
     gap: 24px;

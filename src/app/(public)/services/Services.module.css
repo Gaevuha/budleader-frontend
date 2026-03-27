@@ -304,7 +304,7 @@
   box-shadow: 0 8px 16px rgba(0, 0, 0, 0.1);
 }
 
-@media (min-width: 768px) {
+@media only screen and (min-width: 768px) {
   .grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -316,7 +316,7 @@
   }
 }
 
-@media (min-width: 1024px) {
+@media only screen and (min-width: 1440px) {
   .grid {
     grid-template-columns: repeat(3, 1fr);
   }

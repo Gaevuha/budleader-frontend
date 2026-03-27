@@ -1,0 +1,102 @@
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 1200;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding: 12px;
+}
+
+.modal {
+  width: 100%;
+  max-width: 420px;
+  background: var(--background);
+  border-radius: 14px;
+  padding: 18px;
+  position: relative;
+  box-shadow: 0 16px 40px rgba(2, 6, 23, 0.2);
+}
+
+.closeBtn {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  border: none;
+  background: transparent;
+  color: var(--foreground);
+  cursor: pointer;
+}
+
+.title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.subtitle {
+  margin: 6px 0 14px;
+  color: color-mix(in srgb, var(--foreground) 75%, transparent);
+  font-size: 14px;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+.label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.input {
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 14px;
+  background: var(--background);
+  color: var(--foreground);
+}
+
+.textarea {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+  background: var(--background);
+  color: var(--foreground);
+  resize: vertical;
+  min-height: 84px;
+}
+
+.submitBtn {
+  height: 44px;
+  border: none;
+  border-radius: 10px;
+  background: var(--primary);
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.submitBtn:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
+}
+
+@media only screen and (min-width: 768px) {
+  .overlay {
+    align-items: center;
+    padding: 20px;
+  }
+
+  .modal {
+    border-radius: 16px;
+    padding: 22px;
+  }
+}
