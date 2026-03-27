@@ -13,6 +13,7 @@
   padding: 8px 0;
   font-size: 13px;
   color: var(--foreground);
+  display: none;
 }
 
 .topBarInner {
@@ -86,7 +87,8 @@
   gap: 24px;
 }
 
-.topBarAuth, .topBarCart {
+.topBarAuth,
+.topBarCart {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -100,7 +102,8 @@
   opacity: 0.8;
 }
 
-.topBarAuth:hover, .topBarCart:hover {
+.topBarAuth:hover,
+.topBarCart:hover {
   color: var(--primary);
   opacity: 1;
 }
@@ -145,11 +148,12 @@
   letter-spacing: 0.5px;
 }
 
-.catalogBtn:hover, .catalogBtnActive {
+.catalogBtn:hover,
+.catalogBtnActive {
   background-color: #f8fafc;
   color: #1e293b;
   border-color: var(--border);
-  box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
 .searchContainer {
@@ -268,21 +272,19 @@
 }
 
 /* Media Queries */
-@media (max-width: 767px) {
+@media only screen and (min-width: 768px) {
   .topBar {
-    display: none;
+    display: block;
   }
-}
 
-@media (min-width: 768px) {
   .searchContainer {
     display: flex;
   }
-  
+
   .mobileMenuBtn {
     display: none;
   }
-  
+
   .actionText {
     display: block;
   }
@@ -292,7 +294,7 @@
   }
 }
 
-@media (min-width: 1024px) {
+@media only screen and (min-width: 1440px) {
   .catalogBtn {
     display: flex;
   }

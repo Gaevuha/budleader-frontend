@@ -23,6 +23,7 @@ import {
   Utensils,
   Bath,
   Baby,
+  ChevronsDown,
   ChevronRight,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
@@ -32,8 +33,10 @@ import { ProductCard } from "@/components/product/ProductCard/ProductCard";
 import { getCategoryProductsCSR } from "@/services/apiClient";
 import type { AppProduct } from "@/types/app";
 import type { Category } from "@/types/category";
+import type { CategorySubcategoryLink } from "@/types/category";
 import type { FeatureItem } from "@/types/content";
 import styles from "@/app/page.module.css";
+import { Hero } from "../hero/Hero";
 
 interface HomeClientProps {
   initialCategories: Category[];
@@ -44,6 +47,22 @@ interface CategoryProductLink {
   id: string;
   name: string;
 }
+
+const toSubcategoryItem = (
+  item: string | CategorySubcategoryLink
+): { label: string; id: string | null } => {
+  if (typeof item === "string") {
+    return {
+      label: item,
+      id: null,
+    };
+  }
+
+  return {
+    label: item.name ?? item.title ?? "Підкатегорія",
+    id: item.id ?? item._id ?? null,
+  };
+};
 
 const categoryIconRules: Array<{ icon: LucideIcon; keywords: string[] }> = [
   { icon: Droplets, keywords: ["водопост", "опален", "каналіз", "сантех"] },
@@ -107,6 +126,7 @@ export function HomeClient({
   initialProducts,
 }: HomeClientProps) {
   const [isCatalogExpanded, setIsCatalogExpanded] = useState(false);
+  const collapsedCategoryCount = 14;
   const [activeCategoryId, setActiveCategoryId] = useState<string>("");
   const [loadingCategoryId, setLoadingCategoryId] = useState<string | null>(
     null
@@ -121,7 +141,7 @@ export function HomeClient({
 
   const visibleCategories = isCatalogExpanded
     ? categories
-    : categories.slice(0, 9);
+    : categories.slice(0, collapsedCategoryCount);
 
   useEffect(() => {
     if (visibleCategories.length > 0 && !activeCategoryId) {
@@ -276,7 +296,7 @@ export function HomeClient({
                     {visibleCategories.map((category) => {
                       const Icon = pickCategoryIcon(category.name);
                       const categoryHref = `/catalog?category=${encodeURIComponent(
-                        category.slug ?? category.name
+                        category.id
                       )}`;
                       const fallbackLinks =
                         loadedCategoryLinks[category.id] ??
@@ -323,13 +343,25 @@ export function HomeClient({
                                       </Link>
                                     </h4>
                                     <ul className={styles.submenuList}>
-                                      {(group.links ?? []).map((item) => (
-                                        <li key={item}>
-                                          <Link href={categoryHref}>
-                                            {item}
-                                          </Link>
-                                        </li>
-                                      ))}
+                                      {(group.links ?? []).map(
+                                        (rawItem, itemIndex) => {
+                                          const item =
+                                            toSubcategoryItem(rawItem);
+                                          const href = `/catalog?category=${encodeURIComponent(
+                                            item.id ?? category.id
+                                          )}`;
+
+                                          return (
+                                            <li
+                                              key={`${item.label}-${itemIndex}`}
+                                            >
+                                              <Link href={href}>
+                                                {item.label}
+                                              </Link>
+                                            </li>
+                                          );
+                                        }
+                                      )}
                                     </ul>
                                   </div>
                                 )
@@ -375,27 +407,19 @@ export function HomeClient({
                       );
                     })}
                   </ul>
+
+                  {!isCatalogExpanded &&
+                  categories.length > collapsedCategoryCount ? (
+                    <div className={styles.catalogMoreIndicator} aria-hidden>
+                      <ChevronsDown size={16} />
+                    </div>
+                  ) : null}
                 </div>
               </aside>
             </div>
 
             <div className={styles.heroBannerWrapper}>
-              <div className={styles.heroBanner}>
-                <div className={styles.heroContent}>
-                  <h1 className={styles.heroTitle}>
-                    Будуй надійно з{" "}
-                    <span className={styles.highlight}>Лідер</span>
-                  </h1>
-                  <p className={styles.heroSubtitle}>
-                    Широкий асортимент товарів з доставкою по всій Україні.
-                  </p>
-                  <div className={styles.heroActions}>
-                    <Link href="/catalog" className={styles.primaryBtn}>
-                      Перейти в каталог <ArrowRight size={20} />
-                    </Link>
-                  </div>
-                </div>
-              </div>
+              <Hero />
             </div>
           </div>
         </Container>

@@ -33,6 +33,7 @@
   display: flex;
   gap: 16px;
   margin-bottom: 8px;
+  flex-direction: column;
 }
 
 .searchWrapper {
@@ -67,7 +68,14 @@
 
 .filterWrapper {
   position: relative;
-  width: 200px;
+  width: 100%;
+}
+
+.table th:nth-child(3),
+.table td:nth-child(3),
+.table th:nth-child(6),
+.table td:nth-child(6) {
+  display: none;
 }
 
 .filterIcon {
@@ -266,19 +274,19 @@
   font-size: 14px;
 }
 
-@media (max-width: 768px) {
+@media only screen and (min-width: 768px) {
   .filters {
-    flex-direction: column;
+    flex-direction: row;
   }
 
   .filterWrapper {
-    width: 100%;
+    width: 200px;
   }
 
   .table th:nth-child(3),
   .table td:nth-child(3),
   .table th:nth-child(6),
   .table td:nth-child(6) {
-    display: none;
+    display: table-cell;
   }
 }

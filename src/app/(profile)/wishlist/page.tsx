@@ -7,9 +7,17 @@ import { Heart } from "lucide-react";
 import styles from "./Wishlist.module.css";
 import { motion } from "framer-motion";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
+import { useWishlistQuery } from "@/queries/wishlistQueries";
+import { useAuthStore } from "@/store/auth/authStore";
 
 const WishlistPage = () => {
-  const wishlist = useWishlistStore((state) => state.wishlist);
+  const localWishlist = useWishlistStore((state) => state.wishlist);
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const wishlistQuery = useWishlistQuery(isAuthenticated);
+
+  const wishlist = isAuthenticated
+    ? (wishlistQuery.data?.items ?? [])
+    : localWishlist;
 
   return (
     <Container className={styles.container}>

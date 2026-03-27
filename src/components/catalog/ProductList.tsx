@@ -1,7 +1,5 @@
 "use client";
 
-import { AnimatePresence, motion } from "framer-motion";
-
 import { ProductCard } from "@/components/product/ProductCard/ProductCard";
 import type { AppProduct } from "@/types/app";
 import styles from "@/components/catalog/Catalog.module.css";
@@ -31,23 +29,11 @@ export function ProductList({
 
   return (
     <div className={viewMode === "grid" ? styles.grid : styles.list}>
-      <AnimatePresence>
-        {products.map((product, index) => (
-          <motion.div
-            key={product.id}
-            layout
-            initial={{ opacity: 0, scale: 0.96 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0, scale: 0.96 }}
-            transition={{
-              duration: 0.18,
-              delay: Math.min(index * 0.025, 0.25),
-            }}
-          >
-            <ProductCard product={product} viewMode={viewMode} />
-          </motion.div>
-        ))}
-      </AnimatePresence>
+      {products.map((product) => (
+        <div key={product.id}>
+          <ProductCard product={product} viewMode={viewMode} />
+        </div>
+      ))}
     </div>
   );
 }

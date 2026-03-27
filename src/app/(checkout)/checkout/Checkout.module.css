@@ -1,0 +1,103 @@
+.container {
+  padding-block: 20px 32px;
+}
+
+.title {
+  margin: 0 0 18px;
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.layout {
+  display: grid;
+  gap: 16px;
+}
+
+.form,
+.summary,
+.authGate {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--background);
+  padding: 14px;
+}
+
+.form {
+  display: grid;
+  gap: 12px;
+}
+
+.form label {
+  display: grid;
+  gap: 6px;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.form input {
+  height: 42px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0 10px;
+  font-size: 14px;
+}
+
+.summary h2 {
+  margin: 0 0 12px;
+  font-size: 18px;
+}
+
+.summary ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 10px;
+}
+
+.summary li {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.total {
+  margin-top: 16px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.authGate {
+  display: grid;
+  gap: 10px;
+  justify-items: start;
+}
+
+.authGate h1 {
+  margin: 0;
+  font-size: 22px;
+}
+
+.authGate p {
+  margin: 0;
+}
+
+@media only screen and (min-width: 768px) {
+  .container {
+    padding-block: 28px 44px;
+  }
+
+  .layout {
+    grid-template-columns: 1.2fr 0.8fr;
+    gap: 20px;
+    align-items: start;
+  }
+
+  .form,
+  .summary {
+    padding: 18px;
+  }
+}

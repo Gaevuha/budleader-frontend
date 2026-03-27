@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter } from "next/navigation";
 import { Container } from "../Container/Container";
 import {
   ShoppingCart,
@@ -28,6 +29,8 @@ interface HeaderProps {
 }
 
 export const Header = ({ categories }: HeaderProps) => {
+  const router = useRouter();
+  const pathname = usePathname();
   const currentUser = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const theme = useUIStore((state) => state.theme);
@@ -36,6 +39,10 @@ export const Header = ({ categories }: HeaderProps) => {
   const wishlist = useWishlistStore((state) => state.wishlist);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchDirty, setIsSearchDirty] = useState(false);
+  const lastSearchNavigationRef = useRef<string>("");
+  const hasPendingCatalogTransitionRef = useRef(false);
 
   const handleThemeToggle = () => {
     toggleTheme();
@@ -44,6 +51,53 @@ export const Header = ({ categories }: HeaderProps) => {
   const handleLogout = () => {
     void logout();
   };
+
+  useEffect(() => {
+    if (!isSearchDirty) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      const normalized = searchQuery.trim();
+
+      if (pathname === "/catalog") {
+        window.dispatchEvent(
+          new CustomEvent<string>("catalog-search-change", {
+            detail: normalized,
+          })
+        );
+        return;
+      }
+
+      // Avoid firing multiple heavy RSC navigations while user is still typing
+      // on non-catalog pages.
+      if (hasPendingCatalogTransitionRef.current) {
+        return;
+      }
+
+      const nextTarget = normalized
+        ? `/catalog?search=${encodeURIComponent(normalized)}`
+        : "/catalog";
+
+      if (lastSearchNavigationRef.current === nextTarget) {
+        return;
+      }
+
+      hasPendingCatalogTransitionRef.current = true;
+      lastSearchNavigationRef.current = nextTarget;
+      router.replace(nextTarget);
+    }, 350);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [isSearchDirty, pathname, router, searchQuery]);
+
+  useEffect(() => {
+    if (pathname === "/catalog") {
+      hasPendingCatalogTransitionRef.current = false;
+    }
+  }, [pathname]);
 
   const displayName =
     currentUser?.firstName ?? currentUser?.email ?? "Користувач";
@@ -122,11 +176,20 @@ export const Header = ({ categories }: HeaderProps) => {
           </button>
 
           <div className={styles.searchContainer}>
-            <Search size={20} className={styles.searchIconLeft} />
+            <Search
+              size={20}
+              className={styles.searchIconLeft}
+              aria-hidden="true"
+            />
             <input
               type="text"
               placeholder="Я шукаю..."
               className={styles.searchInput}
+              value={searchQuery}
+              onChange={(event) => {
+                setIsSearchDirty(true);
+                setSearchQuery(event.target.value);
+              }}
             />
           </div>
 

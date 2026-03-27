@@ -1,11 +1,15 @@
 import type { AxiosInstance } from "axios";
 
 import { api } from "@/services/api";
-import { mapApiPayloadToAppProducts } from "@/services/api";
+import {
+  mapApiPayloadToAppProducts,
+  mapApiProductToAppProduct,
+} from "@/services/api";
 import type { ApiResponse } from "@/types/api";
 import type { Pagination } from "@/types/api";
 import type { AppProduct } from "@/types/app";
 import type { CartData } from "@/types/cart";
+import type { CreateOrderPayload } from "@/types/order";
 import type {
   LoginData,
   LoginPayload,
@@ -40,6 +44,7 @@ export interface GetProductsCSRParams {
   brand?: string;
   isNew?: boolean;
   isSale?: boolean;
+  search?: string;
 }
 
 export interface GetProductsCSRResult {
@@ -47,8 +52,19 @@ export interface GetProductsCSRResult {
   pagination: Pagination | null;
 }
 
+export interface FetchProductsParams {
+  page: number;
+  limit: number;
+  search?: string;
+}
+
+export interface FetchProductsResult {
+  products: AppProduct[];
+  pagination: Pagination | null;
+}
+
 const uniqueCategoryTokens = (category: CategoryLookupInput): string[] => {
-  return [category.slug, category.name, category.id]
+  return [category.id, category.slug, category.name]
     .filter((value): value is string => Boolean(value))
     .filter((value, index, arr) => arr.indexOf(value) === index);
 };
@@ -117,6 +133,7 @@ export async function getProductsCSR(
   if (params.brand) query.set("brand", params.brand);
   if (params.isNew) query.set("isNewProduct", "true");
   if (params.isSale) query.set("isOnSale", "true");
+  if (params.search?.trim()) query.set("search", params.search.trim());
 
   const url = `/api/proxy/api/products?${query.toString()}`;
 
@@ -142,6 +159,25 @@ export async function getProductsCSR(
   const pagination = extractPagination(payload);
 
   return { products, pagination };
+}
+
+export async function fetchProducts({
+  page,
+  limit,
+  search,
+}: FetchProductsParams): Promise<FetchProductsResult> {
+  const response = await apiClient.get("api/products", {
+    params: {
+      page,
+      limit,
+      ...(search && search.trim() ? { search: search.trim() } : {}),
+    },
+  });
+
+  return {
+    products: mapApiPayloadToAppProducts(response.data),
+    pagination: extractPagination(response.data),
+  };
 }
 
 export async function getCategoryProductsCSR(
@@ -214,6 +250,30 @@ export interface SubmitProductReviewResult {
   rating?: number;
 }
 
+export interface WishlistResult {
+  items: AppProduct[];
+}
+
+export interface QuickOrderPayload {
+  productId: string;
+  quantity?: number;
+  fullName: string;
+  phone: string;
+  city?: string;
+  street?: string;
+  building?: string;
+  apartment?: string;
+  comment?: string;
+  paymentMethod?: "card" | "cash" | "cash_on_delivery";
+  deliveryMethod?: "courier" | "pickup" | "nova_poshta";
+}
+
+export interface OrderResult {
+  orderId?: string;
+  status?: string;
+  isGuest?: boolean;
+}
+
 const normalizeUser = (raw: User & { _id?: string; name?: string }): User => ({
   ...raw,
   id: raw.id ?? raw._id ?? "",
@@ -226,14 +286,58 @@ const normalizeCartPayload = (payload: unknown): CartData => {
     | ApiResponse<CartData>
     | { data?: CartData };
 
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in (payload as Record<string, unknown>)
-  ) {
-    const nested = (candidate as { data?: CartData }).data;
-    if (nested) {
-      return nested;
+  if (payload && typeof payload === "object") {
+    const raw = payload as Record<string, unknown>;
+    const nested =
+      "data" in raw && raw.data && typeof raw.data === "object"
+        ? (raw.data as Record<string, unknown>)
+        : null;
+
+    if (nested && Array.isArray(nested.items)) {
+      return nested as CartData;
+    }
+
+    // Backend cart mutations may return a plain cart array in data.
+    if (Array.isArray(raw.data)) {
+      const items = (raw.data as Array<Record<string, unknown>>).map((item) => {
+        const productObj =
+          item.product && typeof item.product === "object"
+            ? (item.product as Record<string, unknown>)
+            : null;
+
+        const productId =
+          (productObj?._id as string | undefined) ??
+          (item.productId as string | undefined) ??
+          (item.product as string | undefined) ??
+          "";
+
+        const quantity = Number(item.quantity ?? 1);
+        const price = Number(productObj?.price ?? item.price ?? 0);
+
+        return {
+          id: productId,
+          productId,
+          quantity: Number.isFinite(quantity) ? quantity : 1,
+          price: Number.isFinite(price) ? price : 0,
+          product: productObj
+            ? {
+                ...(productObj as object),
+                id: (productObj.id as string | undefined) ?? productId,
+                image:
+                  (productObj.image as string | undefined) ??
+                  (productObj.mainImage as string | undefined),
+              }
+            : undefined,
+        };
+      });
+
+      const subtotal = items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      );
+      const itemsCount = items.reduce((sum, item) => sum + item.quantity, 0);
+
+      return { items, subtotal, itemsCount };
     }
   }
 
@@ -248,6 +352,50 @@ const normalizeCartPayload = (payload: unknown): CartData => {
     items: [],
     subtotal: 0,
     itemsCount: 0,
+  };
+};
+
+const normalizeWishlistPayload = (payload: unknown): WishlistResult => {
+  if (!payload || typeof payload !== "object") {
+    return { items: [] };
+  }
+
+  const raw = payload as Record<string, unknown>;
+  const nested =
+    "data" in raw && Array.isArray(raw.data)
+      ? (raw.data as unknown[])
+      : Array.isArray(payload)
+      ? (payload as unknown[])
+      : [];
+
+  const items = nested
+    .map((item) => mapApiProductToAppProduct(item))
+    .filter((item): item is AppProduct => item !== null);
+
+  return { items };
+};
+
+const normalizeOrderPayload = (payload: unknown): OrderResult => {
+  if (!payload || typeof payload !== "object") {
+    return {};
+  }
+
+  const raw = payload as Record<string, unknown>;
+  const nested =
+    "data" in raw && raw.data && typeof raw.data === "object"
+      ? (raw.data as Record<string, unknown>)
+      : raw;
+
+  return {
+    orderId:
+      (nested.orderId as string | undefined) ??
+      (nested.id as string | undefined) ??
+      (nested._id as string | undefined),
+    status: nested.status as string | undefined,
+    isGuest:
+      typeof nested.isGuest === "boolean"
+        ? (nested.isGuest as boolean)
+        : undefined,
   };
 };
 
@@ -410,6 +558,80 @@ export async function addToCartCSR(
   );
 
   return normalizeCartPayload(response.data);
+}
+
+export async function removeFromCartCSR(productId: string): Promise<CartData> {
+  const response = await apiClient.delete<ApiResponse<CartData> | CartData>(
+    `/api/users/cart/${productId}`
+  );
+
+  return normalizeCartPayload(response.data);
+}
+
+export async function clearCartCSR(): Promise<CartData> {
+  const response = await apiClient.delete<ApiResponse<CartData> | CartData>(
+    "/api/users/cart"
+  );
+
+  return normalizeCartPayload(response.data);
+}
+
+export async function getWishlistCSR(): Promise<WishlistResult> {
+  const response = await apiClient.get("/api/users/wishlist");
+
+  return normalizeWishlistPayload(response.data);
+}
+
+export async function addToWishlistCSR(
+  productId: string
+): Promise<WishlistResult> {
+  const response = await apiClient.post(`/api/users/wishlist/${productId}`);
+
+  return normalizeWishlistPayload(response.data);
+}
+
+export async function removeFromWishlistCSR(
+  productId: string
+): Promise<WishlistResult> {
+  const response = await apiClient.delete(`/api/users/wishlist/${productId}`);
+
+  return normalizeWishlistPayload(response.data);
+}
+
+export async function createOrderCSR(
+  payload: CreateOrderPayload
+): Promise<OrderResult> {
+  const response = await apiClient.post("/api/orders", payload);
+  return normalizeOrderPayload(response.data);
+}
+
+export async function createQuickOrderCSR(
+  payload: QuickOrderPayload
+): Promise<OrderResult> {
+  const fallbackAddressValue = "Не вказано";
+
+  const body = {
+    items: [
+      {
+        productId: payload.productId,
+        quantity: payload.quantity ?? 1,
+      },
+    ],
+    shippingAddress: {
+      name: payload.fullName,
+      phone: payload.phone,
+      city: payload.city ?? fallbackAddressValue,
+      street: payload.street ?? fallbackAddressValue,
+      building: payload.building ?? fallbackAddressValue,
+      ...(payload.apartment ? { apartment: payload.apartment } : {}),
+      ...(payload.comment ? { comment: payload.comment } : {}),
+    },
+    paymentMethod: payload.paymentMethod ?? "cash_on_delivery",
+    deliveryMethod: payload.deliveryMethod ?? "nova_poshta",
+  };
+
+  const response = await apiClient.post("/api/orders/quick", body);
+  return normalizeOrderPayload(response.data);
 }
 
 export async function submitProductReviewCSR(
