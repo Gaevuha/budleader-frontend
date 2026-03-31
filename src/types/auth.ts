@@ -18,9 +18,11 @@ export interface LoginPayload {
 
 export interface LoginData {
   user: User;
-  accessToken: string;
+  accessToken?: string;
+  token?: string;
 }
 
 export interface RefreshTokenData {
-  accessToken: string;
+  accessToken?: string;
+  token?: string;
 }

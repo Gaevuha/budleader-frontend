@@ -2,11 +2,8 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/store/providers";
-import { Header } from "@/components/layout/Header/Header";
-import { Footer } from "@/components/layout/Footer/Footer";
-import { Toaster } from "@/components/UI/sonner/sonner";
+import { AppChrome } from "@/components/layout/AppChrome/AppChrome";
 import { getCategories } from "@/services/apiServer";
-import styles from "./layout.module.css";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -34,12 +31,7 @@ export default async function RootLayout({
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
         <Providers>
-          <div className={styles.layout}>
-            <Toaster position="bottom-right" richColors />
-            <Header categories={categories} />
-            <main className={styles.main}>{children}</main>
-            <Footer />
-          </div>
+          <AppChrome categories={categories}>{children}</AppChrome>
         </Providers>
       </body>
     </html>

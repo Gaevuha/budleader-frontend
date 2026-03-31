@@ -12,7 +12,7 @@ import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { toFiniteNumber } from "@/services/api";
 import { useAuthStore } from "@/store/auth/authStore";
-import { useAddToCartMutation } from "@/queries/cartQueries";
+import { useAddToCartMutation, useCartQuery } from "@/queries/cartQueries";
 import {
   useAddToWishlistMutation,
   useRemoveFromWishlistMutation,
@@ -29,11 +29,14 @@ export const ProductCard = ({
   product,
   viewMode = "grid",
 }: ProductCardProps) => {
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const isAuthenticated = Boolean(accessToken);
+  const localCart = useCartStore((state) => state.cart);
   const addToCartLocal = useCartStore((state) => state.addToCart);
   const wishlistLocal = useWishlistStore((state) => state.wishlist);
   const toggleWishlistLocal = useWishlistStore((state) => state.toggleWishlist);
   const addToCartMutation = useAddToCartMutation();
+  const cartQuery = useCartQuery(isAuthenticated);
   const addToWishlistMutation = useAddToWishlistMutation();
   const removeFromWishlistMutation = useRemoveFromWishlistMutation();
   const wishlistQuery = useWishlistQuery(isAuthenticated);
@@ -54,8 +57,14 @@ export const ProductCard = ({
     : resolvedImageSrc;
 
   const serverWishlist = wishlistQuery.data?.items ?? [];
+  const serverCartItems = cartQuery.data?.items ?? [];
   const effectiveWishlist = isAuthenticated ? serverWishlist : wishlistLocal;
   const isWishlisted = effectiveWishlist.some((item) => item.id === product.id);
+  const isInCart = isAuthenticated
+    ? serverCartItems.some(
+        (item) => item.productId === product.id || item.id === product.id
+      )
+    : localCart.some((item) => item.id === product.id);
   const articleDigits = (product.id ?? "").replace(/\D/g, "");
   const articleCode =
     articleDigits.length > 0
@@ -317,12 +326,17 @@ export const ProductCard = ({
             </div>
 
             <button
-              className={styles.cartBtn}
+              className={`${styles.cartBtn} ${
+                isInCart ? styles.cartActive : ""
+              }`}
               onClick={handleAddToCart}
               disabled={!product.inStock}
               title="Купити"
             >
-              <ShoppingCart size={20} />
+              <ShoppingCart
+                size={20}
+                fill={isInCart ? "currentColor" : "none"}
+              />
             </button>
           </div>
         </div>

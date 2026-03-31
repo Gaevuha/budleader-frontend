@@ -13,6 +13,7 @@ import type { Product } from "@/types/product";
 import { PRODUCT_PLACEHOLDER_SRC, resolveMediaUrl } from "@/utils/media";
 import {
   clearAccessToken,
+  clearRole,
   getAccessToken,
   setAccessToken,
 } from "@/utils/token";
@@ -424,6 +425,7 @@ api.interceptors.response.use(
       return api(originalRequest);
     } catch (refreshError) {
       clearAccessToken();
+      clearRole();
       return Promise.reject(refreshError);
     }
   }

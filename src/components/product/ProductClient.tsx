@@ -38,9 +38,10 @@ export function ProductClient({ product }: ProductClientProps) {
   const addToCartMutation = useAddToCartMutation();
   const addToWishlistMutation = useAddToWishlistMutation();
   const removeFromWishlistMutation = useRemoveFromWishlistMutation();
-  const wishlistQuery = useWishlistQuery(isAuthenticated);
   const currentUser = useAuthStore((state) => state.user);
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const isAuthenticated = Boolean(accessToken);
+  const wishlistQuery = useWishlistQuery(isAuthenticated);
 
   const [reviewText, setReviewText] = useState("");
   const [selectedRating, setSelectedRating] = useState(5);

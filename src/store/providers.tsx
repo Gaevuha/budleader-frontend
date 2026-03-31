@@ -56,8 +56,16 @@ function AppBootstrap() {
       return;
     }
 
-    void fetchMe();
-  }, [accessToken, fetchMe]);
+    // initializeAuth already performs the initial me() call, so this effect is
+    // only a safe fallback when user data is still missing.
+    if (user?.id) {
+      return;
+    }
+
+    void fetchMe().catch(() => {
+      // Session errors are handled in authStore; avoid unhandled runtime errors.
+    });
+  }, [accessToken, fetchMe, user?.id]);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) {
@@ -99,7 +107,7 @@ function AppBootstrap() {
 
         const normalizedCart = serverCart.items.map((item) => ({
           ...(item.product
-            ? (mapApiProductToAppProduct(item.product) ?? {
+            ? mapApiProductToAppProduct(item.product) ?? {
                 id: item.productId,
                 name: "Товар",
                 price: item.price,
@@ -107,7 +115,7 @@ function AppBootstrap() {
                 category: "Загальна",
                 brand: "Budleader",
                 inStock: true,
-              })
+              }
             : {
                 id: item.productId,
                 name: "Товар",
@@ -128,7 +136,14 @@ function AppBootstrap() {
     };
 
     void syncCommerce();
-  }, [isAuthenticated, localCart, localWishlist, setCart, setWishlist, user?.id]);
+  }, [
+    isAuthenticated,
+    localCart,
+    localWishlist,
+    setCart,
+    setWishlist,
+    user?.id,
+  ]);
 
   return null;
 }

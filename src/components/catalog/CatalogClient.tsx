@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
@@ -69,7 +69,12 @@ export function CatalogClient({
   const router = useRouter();
   const pathname = usePathname();
   const [searchTerm, setSearchTerm] = useState(initialSearch);
+  const searchTermRef = useRef(searchTerm);
   const debouncedSearchTerm = useDebounce(searchTerm, 350);
+
+  useEffect(() => {
+    searchTermRef.current = searchTerm;
+  }, [searchTerm]);
 
   const initialProductsMapped = useMemo(
     () =>
@@ -183,13 +188,22 @@ export function CatalogClient({
       const detail = (event as CustomEvent<string>).detail;
       const nextSearch = typeof detail === "string" ? detail : "";
 
+      if (nextSearch.trim() === searchTermRef.current.trim()) {
+        return;
+      }
+
       setSearchTerm(nextSearch);
-      setSelectedBrands([]);
-      setEffectiveBrands([]);
-      setIsNewOnly(false);
-      setIsSaleOnly(false);
-      setEffectiveIsNew(false);
-      setEffectiveIsSale(false);
+
+      if (nextSearch.trim().length > 0) {
+        // Header-driven textual search should start from a clean filter state.
+        setSelectedBrands([]);
+        setEffectiveBrands([]);
+        setIsNewOnly(false);
+        setIsSaleOnly(false);
+        setEffectiveIsNew(false);
+        setEffectiveIsSale(false);
+      }
+
       setCurrentPage(1);
     };
 

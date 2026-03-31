@@ -42,7 +42,6 @@ export const Header = ({ categories }: HeaderProps) => {
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchDirty, setIsSearchDirty] = useState(false);
   const lastSearchNavigationRef = useRef<string>("");
-  const hasPendingCatalogTransitionRef = useRef(false);
 
   const handleThemeToggle = () => {
     toggleTheme();
@@ -69,12 +68,6 @@ export const Header = ({ categories }: HeaderProps) => {
         return;
       }
 
-      // Avoid firing multiple heavy RSC navigations while user is still typing
-      // on non-catalog pages.
-      if (hasPendingCatalogTransitionRef.current) {
-        return;
-      }
-
       const nextTarget = normalized
         ? `/catalog?search=${encodeURIComponent(normalized)}`
         : "/catalog";
@@ -83,7 +76,6 @@ export const Header = ({ categories }: HeaderProps) => {
         return;
       }
 
-      hasPendingCatalogTransitionRef.current = true;
       lastSearchNavigationRef.current = nextTarget;
       router.replace(nextTarget);
     }, 350);
@@ -92,12 +84,6 @@ export const Header = ({ categories }: HeaderProps) => {
       window.clearTimeout(timeoutId);
     };
   }, [isSearchDirty, pathname, router, searchQuery]);
-
-  useEffect(() => {
-    if (pathname === "/catalog") {
-      hasPendingCatalogTransitionRef.current = false;
-    }
-  }, [pathname]);
 
   const displayName =
     currentUser?.firstName ?? currentUser?.email ?? "Користувач";

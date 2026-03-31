@@ -6,6 +6,7 @@ import styles from "./AuthModal.module.css";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
 import { useAuthStore } from "@/store/auth/authStore";
+import { useRouter } from "next/navigation";
 
 export const AuthModal = ({
   isOpen,
@@ -15,6 +16,7 @@ export const AuthModal = ({
   onClose: () => void;
 }) => {
   const login = useAuthStore((state) => state.login);
+  const router = useRouter();
   const [isLogin, setIsLogin] = useState(true);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -34,6 +36,14 @@ export const AuthModal = ({
     try {
       await login({ email, password });
       onClose();
+
+      const role = useAuthStore.getState().user?.role;
+
+      if (role === "admin") {
+        router.push("/admin/dashboard");
+      } else {
+        router.push("/profile");
+      }
     } catch {
       toast.error("Не вдалося увійти. Перевірте дані або спробуйте пізніше");
     } finally {

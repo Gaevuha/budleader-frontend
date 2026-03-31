@@ -21,10 +21,14 @@ export default function CheckoutPage() {
   const [city, setCity] = useState("");
   const [addressLine1, setAddressLine1] = useState("");
 
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const isAuthenticated = Boolean(accessToken);
   const cartQuery = useCartQuery(isAuthenticated);
 
-  const items = cartQuery.data?.items ?? [];
+  const items = useMemo(
+    () => cartQuery.data?.items ?? [],
+    [cartQuery.data?.items]
+  );
   const total = useMemo(
     () => items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     [items]
@@ -43,7 +47,12 @@ export default function CheckoutPage() {
       return;
     }
 
-    if (!fullName.trim() || !phone.trim() || !city.trim() || !addressLine1.trim()) {
+    if (
+      !fullName.trim() ||
+      !phone.trim() ||
+      !city.trim() ||
+      !addressLine1.trim()
+    ) {
       toast.error("Заповніть обов'язкові поля");
       return;
     }
@@ -100,7 +109,10 @@ export default function CheckoutPage() {
         <form className={styles.form} onSubmit={handleSubmit}>
           <label>
             ПІБ
-            <input value={fullName} onChange={(e) => setFullName(e.target.value)} />
+            <input
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+            />
           </label>
 
           <label>
@@ -121,7 +133,12 @@ export default function CheckoutPage() {
             />
           </label>
 
-          <Button type="submit" variant="primary" size="lg" disabled={isSubmitting}>
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            disabled={isSubmitting}
+          >
             {isSubmitting ? "Оформлюємо..." : "Підтвердити замовлення"}
           </Button>
         </form>

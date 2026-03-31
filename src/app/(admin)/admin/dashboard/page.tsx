@@ -4,12 +4,7 @@ import { useEffect, useState } from "react";
 import { Package, ShoppingCart, Users, TrendingUp } from "lucide-react";
 
 import { apiClient as api } from "@/services/apiClient";
-import type { ApiResponse } from "@/types/api";
-import type {
-  AdminOrder,
-  DashboardStat,
-  DashboardStatsData,
-} from "@/types/dashboard";
+import type { AdminOrder, DashboardStat } from "@/types/dashboard";
 import styles from "./Dashboard.module.css";
 
 const iconMap = {
@@ -17,28 +12,6 @@ const iconMap = {
   orders: ShoppingCart,
   products: Package,
   users: Users,
-};
-
-const normalizeStats = (raw: unknown): DashboardStat[] => {
-  if (!raw || typeof raw !== "object") {
-    return [];
-  }
-
-  const candidate = raw as DashboardStatsData | { data?: DashboardStatsData };
-
-  if ("stats" in candidate && Array.isArray(candidate.stats)) {
-    return candidate.stats;
-  }
-
-  if (
-    "data" in candidate &&
-    candidate.data &&
-    Array.isArray(candidate.data.stats)
-  ) {
-    return candidate.data.stats;
-  }
-
-  return [];
 };
 
 const normalizeOrders = (raw: unknown): AdminOrder[] => {
@@ -62,6 +35,73 @@ const normalizeOrders = (raw: unknown): AdminOrder[] => {
   return [];
 };
 
+const normalizeStatsFromAdmin = (raw: unknown): DashboardStat[] => {
+  if (!raw || typeof raw !== "object") {
+    return [];
+  }
+
+  const candidate = raw as {
+    stats?: DashboardStat[];
+    data?: { stats?: DashboardStat[] };
+  };
+
+  if (Array.isArray(candidate.stats)) {
+    return candidate.stats;
+  }
+
+  if (candidate.data && Array.isArray(candidate.data.stats)) {
+    return candidate.data.stats;
+  }
+
+  return [];
+};
+
+const normalizeRecentOrdersFromAdmin = (raw: unknown): AdminOrder[] => {
+  if (!raw || typeof raw !== "object") {
+    return [];
+  }
+
+  const candidate = raw as {
+    orders?: unknown[];
+    data?: { orders?: unknown[] };
+  };
+
+  const rows = Array.isArray(candidate.orders)
+    ? candidate.orders
+    : Array.isArray(candidate.data?.orders)
+    ? candidate.data.orders
+    : [];
+
+  return rows
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const row = item as {
+        id?: string;
+        _id?: string;
+        customerName?: string;
+        status?: string;
+        totalAmount?: number;
+        total?: number;
+      };
+
+      const id = row.id ?? row._id;
+      if (!id) {
+        return null;
+      }
+
+      return {
+        id,
+        customerName: row.customerName ?? "Користувач",
+        status: row.status ?? "pending",
+        totalAmount: row.totalAmount ?? row.total ?? 0,
+      } satisfies AdminOrder;
+    })
+    .filter((item): item is AdminOrder => item !== null);
+};
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStat[]>([]);
   const [orders, setOrders] = useState<AdminOrder[]>([]);
@@ -69,17 +109,82 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const [statsRes, ordersRes] = await Promise.all([
-          api.get<ApiResponse<DashboardStatsData> | DashboardStatsData>(
-            "/api/admin/stats"
-          ),
-          api.get<
-            ApiResponse<{ orders: AdminOrder[] }> | { orders: AdminOrder[] }
-          >("/api/orders?limit=5"),
+        const statsRes = await api.get("/api/admin/stats");
+        const statsPayload = statsRes.data as {
+          data?: { stats?: DashboardStat[]; orders?: unknown[] };
+          stats?: DashboardStat[];
+          orders?: unknown[];
+        };
+
+        const adminStats = normalizeStatsFromAdmin(statsPayload);
+        const adminOrders = normalizeRecentOrdersFromAdmin(statsPayload);
+
+        if (adminStats.length > 0) {
+          setStats(adminStats);
+        }
+
+        if (adminOrders.length > 0) {
+          setOrders(adminOrders);
+          return;
+        }
+
+        const [ordersRes, usersRes, productsRes] = await Promise.all([
+          api.get("/api/orders/admin/all", {
+            params: { page: 1, limit: 5 },
+          }),
+          api.get("/api/users", {
+            params: { page: 1, limit: 1 },
+          }),
+          api.get("/api/products", {
+            params: { page: 1, limit: 1 },
+          }),
         ]);
 
-        setStats(normalizeStats(statsRes.data));
-        setOrders(normalizeOrders(ordersRes.data));
+        const recentOrders = normalizeOrders(ordersRes.data);
+
+        const usersTotal =
+          (usersRes.data as { data?: { pagination?: { total?: number } } })
+            ?.data?.pagination?.total ?? 0;
+        const productsTotal =
+          (productsRes.data as { data?: { pagination?: { total?: number } } })
+            ?.data?.pagination?.total ?? 0;
+
+        const revenue = recentOrders.reduce(
+          (sum, order) => sum + order.totalAmount,
+          0
+        );
+
+        setStats([
+          {
+            id: "revenue",
+            title: "Виторг (останні 5)",
+            value: `${revenue.toLocaleString()} ₴`,
+            trend: "Оновлюється в реальному часі",
+            icon: "revenue",
+          },
+          {
+            id: "orders",
+            title: "Замовлення",
+            value: String(recentOrders.length),
+            trend: "Останні 5 записів",
+            icon: "orders",
+          },
+          {
+            id: "products",
+            title: "Товари",
+            value: String(productsTotal),
+            trend: "Загалом у каталозі",
+            icon: "products",
+          },
+          {
+            id: "users",
+            title: "Користувачі",
+            value: String(usersTotal),
+            trend: "Зареєстрованих",
+            icon: "users",
+          },
+        ]);
+        setOrders(recentOrders);
       } catch {
         setStats([]);
         setOrders([]);
@@ -91,12 +196,18 @@ export default function DashboardPage() {
 
   const getStatusText = (status: string) => {
     switch (status) {
+      case "pending":
+        return "Очікує";
+      case "paid":
+        return "Оплачено";
       case "new":
         return "Нове";
       case "processing":
         return "В обробці";
       case "shipped":
         return "Відправлено";
+      case "received":
+        return "Отримано";
       case "delivered":
         return "Доставлено";
       case "cancelled":
@@ -108,10 +219,13 @@ export default function DashboardPage() {
 
   const getStatusClass = (status: string) => {
     switch (status) {
+      case "pending":
       case "new":
         return styles.statusPending;
+      case "paid":
       case "processing":
       case "shipped":
+      case "received":
         return styles.statusProcessing;
       case "delivered":
         return styles.statusCompleted;

@@ -35,7 +35,8 @@ export default function CartPage() {
   const [quantityInput, setQuantityInput] = useState(1);
   const [isAuthOpen, setIsAuthOpen] = useState(false);
 
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const isAuthenticated = Boolean(accessToken);
 
   const localCart = useCartStore((state) => state.cart);
   const removeLocal = useCartStore((state) => state.removeFromCart);
