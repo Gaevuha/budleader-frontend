@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ShoppingCart, Heart, Check, Star } from "lucide-react";
@@ -12,7 +12,11 @@ import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { toFiniteNumber } from "@/services/api";
 import { useAuthStore } from "@/store/auth/authStore";
-import { useAddToCartMutation, useCartQuery } from "@/queries/cartQueries";
+import {
+  useAddToCartMutation,
+  useCartQuery,
+  useRemoveFromCartMutation,
+} from "@/queries/cartQueries";
 import {
   useAddToWishlistMutation,
   useRemoveFromWishlistMutation,
@@ -33,13 +37,21 @@ export const ProductCard = ({
   const isAuthenticated = Boolean(accessToken);
   const localCart = useCartStore((state) => state.cart);
   const addToCartLocal = useCartStore((state) => state.addToCart);
+  const removeFromCartLocal = useCartStore((state) => state.removeFromCart);
   const wishlistLocal = useWishlistStore((state) => state.wishlist);
   const toggleWishlistLocal = useWishlistStore((state) => state.toggleWishlist);
   const addToCartMutation = useAddToCartMutation();
+  const removeFromCartMutation = useRemoveFromCartMutation();
   const cartQuery = useCartQuery(isAuthenticated);
   const addToWishlistMutation = useAddToWishlistMutation();
   const removeFromWishlistMutation = useRemoveFromWishlistMutation();
   const wishlistQuery = useWishlistQuery(isAuthenticated);
+  const [optimisticInCart, setOptimisticInCart] = useState<boolean | null>(
+    null
+  );
+  const [optimisticWishlisted, setOptimisticWishlisted] = useState<
+    boolean | null
+  >(null);
   const [isQuickOrderOpen, setIsQuickOrderOpen] = useState(false);
   const [failedImageSrcMap, setFailedImageSrcMap] = useState<
     Record<string, true>
@@ -65,6 +77,8 @@ export const ProductCard = ({
         (item) => item.productId === product.id || item.id === product.id
       )
     : localCart.some((item) => item.id === product.id);
+  const isWishlistedUi = optimisticWishlisted ?? isWishlisted;
+  const isInCartUi = optimisticInCart ?? isInCart;
   const articleDigits = (product.id ?? "").replace(/\D/g, "");
   const articleCode =
     articleDigits.length > 0
@@ -91,37 +105,73 @@ export const ProductCard = ({
     ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
     : 0;
 
+  useEffect(() => {
+    setOptimisticInCart(null);
+  }, [isInCart]);
+
+  useEffect(() => {
+    setOptimisticWishlisted(null);
+  }, [isWishlisted]);
+
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
 
+    const wasInCart = isInCartUi;
+    const cartEntry = serverCartItems.find(
+      (item) => item.productId === product.id || item.id === product.id
+    );
+    const removeProductId = cartEntry?.productId ?? product.id;
+
     if (isAuthenticated) {
+      setOptimisticInCart(!wasInCart);
+
       try {
-        await addToCartMutation.mutateAsync({
-          productId: product.id,
-          quantity: 1,
-        });
+        if (wasInCart) {
+          await removeFromCartMutation.mutateAsync(removeProductId);
+          removeFromCartLocal(product.id);
+        } else {
+          await addToCartMutation.mutateAsync({
+            productId: product.id,
+            quantity: 1,
+          });
+          addToCartLocal(product as AppProduct);
+        }
       } catch {
-        toast.error("Не вдалося додати товар у кошик");
+        setOptimisticInCart(wasInCart);
+        toast.error("Не вдалося оновити кошик");
         return;
       }
     } else {
-      addToCartLocal(product as AppProduct);
+      if (wasInCart) {
+        removeFromCartLocal(product.id);
+      } else {
+        addToCartLocal(product as AppProduct);
+      }
     }
 
-    toast.success("Товар додано до кошика!");
+    toast.success(
+      wasInCart ? "Товар видалено з кошика" : "Товар додано до кошика!"
+    );
   };
 
   const handleToggleWishlist = async (e: React.MouseEvent) => {
     e.preventDefault();
 
+    const wasWishlisted = isWishlistedUi;
+
     if (isAuthenticated) {
+      setOptimisticWishlisted(!wasWishlisted);
+
       try {
-        if (isWishlisted) {
+        if (wasWishlisted) {
           await removeFromWishlistMutation.mutateAsync(product.id);
         } else {
           await addToWishlistMutation.mutateAsync(product.id);
         }
+
+        toggleWishlistLocal(product as AppProduct);
       } catch {
+        setOptimisticWishlisted(wasWishlisted);
         toast.error("Не вдалося оновити список бажань");
         return;
       }
@@ -129,7 +179,7 @@ export const ProductCard = ({
       toggleWishlistLocal(product as AppProduct);
     }
 
-    toast.success(isWishlisted ? "Видалено з обраного" : "Додано до обраного");
+    toast.success(wasWishlisted ? "Видалено з обраного" : "Додано до обраного");
   };
 
   const handleQuickOrder = async (e: React.MouseEvent) => {
@@ -225,12 +275,12 @@ export const ProductCard = ({
 
           <button
             className={`${styles.wishlistBtn} ${
-              isWishlisted ? styles.wishlistActive : ""
+              isWishlistedUi ? styles.wishlistActive : ""
             }`}
             onClick={handleToggleWishlist}
             title="В обране"
           >
-            <Heart size={20} fill={isWishlisted ? "currentColor" : "none"} />
+            <Heart size={20} fill={isWishlistedUi ? "currentColor" : "none"} />
           </button>
 
           <Image
@@ -327,7 +377,7 @@ export const ProductCard = ({
 
             <button
               className={`${styles.cartBtn} ${
-                isInCart ? styles.cartActive : ""
+                isInCartUi ? styles.cartActive : ""
               }`}
               onClick={handleAddToCart}
               disabled={!product.inStock}
@@ -335,7 +385,7 @@ export const ProductCard = ({
             >
               <ShoppingCart
                 size={20}
-                fill={isInCart ? "currentColor" : "none"}
+                fill={isInCartUi ? "currentColor" : "none"}
               />
             </button>
           </div>

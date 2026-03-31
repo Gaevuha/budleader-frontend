@@ -418,7 +418,16 @@ api.interceptors.response.use(
         { withCredentials: true }
       );
 
-      const newAccessToken = refreshResponse.data.data.accessToken;
+      const tokenCandidate =
+        refreshResponse.data?.data?.accessToken ??
+        refreshResponse.data?.data?.token;
+      const newAccessToken =
+        typeof tokenCandidate === "string" ? tokenCandidate.trim() : "";
+
+      if (!newAccessToken) {
+        throw new Error("Не вдалося оновити токен сесії");
+      }
+
       setAccessToken(newAccessToken);
 
       originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
