@@ -24,7 +24,7 @@ export interface AppUser {
   id: string;
   name: string;
   email: string;
-  role: "admin" | "customer";
+  role: "admin" | "user" | "moderator" | "customer";
   date: string;
 }
 
@@ -34,5 +34,13 @@ export interface AppOrder {
   customerEmail: string;
   date: string;
   totalAmount: number;
-  status: "new" | "processing" | "shipped" | "delivered" | "cancelled";
+  status:
+    | "pending"
+    | "paid"
+    | "processing"
+    | "shipped"
+    | "received"
+    | "delivered"
+    | "cancelled"
+    | "new";
 }

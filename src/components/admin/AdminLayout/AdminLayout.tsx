@@ -1,8 +1,9 @@
 "use client";
 
 import type { ReactNode } from "react";
+import { useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -14,10 +15,29 @@ import {
   MessageSquare,
   BarChart2,
 } from "lucide-react";
+import { useAuthStore } from "@/store/auth/authStore";
 import styles from "./AdminLayout.module.css";
 
 export const AdminLayout = ({ children }: { children: ReactNode }) => {
   const location = usePathname();
+  const router = useRouter();
+  const logout = useAuthStore((state) => state.logout);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
+
+  const handleLogout = async () => {
+    if (isLoggingOut) {
+      return;
+    }
+
+    setIsLoggingOut(true);
+
+    try {
+      await logout();
+      router.push("/");
+    } finally {
+      setIsLoggingOut(false);
+    }
+  };
 
   return (
     <div className={styles.layout}>
@@ -29,10 +49,9 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
         </div>
         <nav className={styles.nav}>
           <Link
-            href="/admin"
+            href="/admin/dashboard"
             className={`${styles.navItem} ${
-              location === "/admin" ||
-              location === "/admin/dashboard"
+              location === "/admin" || location === "/admin/dashboard"
                 ? styles.active
                 : ""
             }`}
@@ -50,9 +69,7 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
           <Link
             href="/admin/categories"
             className={`${styles.navItem} ${
-              location.includes("/admin/categories")
-                ? styles.active
-                : ""
+              location.includes("/admin/categories") ? styles.active : ""
             }`}
           >
             <Layers size={20} /> Категорії
@@ -84,9 +101,7 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
           <Link
             href="/admin/analytics"
             className={`${styles.navItem} ${
-              location.includes("/admin/analytics")
-                ? styles.active
-                : ""
+              location.includes("/admin/analytics") ? styles.active : ""
             }`}
           >
             <BarChart2 size={20} /> Аналітика
@@ -101,9 +116,14 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
           </Link>
         </nav>
         <div className={styles.logout}>
-          <Link href="/" className={styles.navItem}>
+          <button
+            type="button"
+            className={styles.navItem}
+            onClick={() => void handleLogout()}
+            disabled={isLoggingOut}
+          >
             <LogOut size={20} /> Вийти
-          </Link>
+          </button>
         </div>
       </aside>
       <main className={styles.main}>

@@ -1,12 +1,20 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { keepPreviousData, useQuery } from "@tanstack/react-query";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ReactPaginate from "react-paginate";
 
 import { Container } from "@/components/layout/Container/Container";
+import Loader from "@/components/UI/Loader/Loader";
 import { CatalogFilters } from "./CatalogFilters";
 import { CatalogToolbar } from "./CatalogToolbar";
 import { ProductList } from "./ProductList";
@@ -59,7 +67,6 @@ export function CatalogClient({
   initialProducts,
   initialFilterProducts,
   initialBrandCounts,
-  initialPagination,
   initialCategory = "",
   initialBrands = [],
   initialIsNew = false,
@@ -68,8 +75,17 @@ export function CatalogClient({
 }: CatalogClientProps) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [searchTerm, setSearchTerm] = useState(initialSearch);
-  const debouncedSearchTerm = useDebounce(searchTerm, 350);
+  const searchTermRef = useRef(searchTerm);
+  const urlSearchTerm = (searchParams.get("search") ?? "").trim();
+  const isFirstSearchSyncRef = useRef(true);
+  const prevUrlSearchRef = useRef(urlSearchTerm);
+  const debouncedSearchTerm = useDebounce(searchTerm, 300);
+
+  useEffect(() => {
+    searchTermRef.current = searchTerm;
+  }, [searchTerm]);
 
   const initialProductsMapped = useMemo(
     () =>
@@ -87,6 +103,7 @@ export function CatalogClient({
   const [maxPrice, setMaxPrice] = useState("");
   const [sortOrder, setSortOrder] = useState("default");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [showInitialLoader, setShowInitialLoader] = useState(true);
 
   // Effective server-side filters — may differ from URL params when the user
   // toggles isNew/isSale checkboxes in the sidebar.
@@ -94,6 +111,40 @@ export function CatalogClient({
   const [effectiveIsSale, setEffectiveIsSale] = useState(initialIsSale);
   const [effectiveBrands, setEffectiveBrands] =
     useState<string[]>(initialBrands);
+
+  useEffect(() => {
+    const prevUrlSearch = prevUrlSearchRef.current;
+    prevUrlSearchRef.current = urlSearchTerm;
+
+    if (isFirstSearchSyncRef.current) {
+      isFirstSearchSyncRef.current = false;
+      return;
+    }
+
+    if (urlSearchTerm === searchTermRef.current.trim()) {
+      return;
+    }
+
+    startTransition(() => {
+      setSearchTerm(urlSearchTerm);
+
+      // Reset filters only when user starts textual search: "" -> "query".
+      if (!prevUrlSearch && urlSearchTerm.length > 0) {
+        setSelectedBrands([]);
+        setEffectiveBrands([]);
+        setIsNewOnly(false);
+        setIsSaleOnly(false);
+        setEffectiveIsNew(false);
+        setEffectiveIsSale(false);
+        setInStockOnly(false);
+        setMinPrice("");
+        setMaxPrice("");
+        setSortOrder("default");
+      }
+
+      setCurrentPage(1);
+    });
+  }, [urlSearchTerm]);
 
   const filterSourceProducts = useMemo(
     () =>
@@ -153,19 +204,6 @@ export function CatalogClient({
 
       return result;
     },
-    // Keep first paint SEO-friendly with SSR list, then switch to CSR updates.
-    initialData:
-      currentPage === 1 &&
-      initialPagination &&
-      debouncedSearchTerm.trim().length === 0 &&
-      effectiveBrands.length === initialBrands.length &&
-      effectiveIsNew === initialIsNew &&
-      effectiveIsSale === initialIsSale
-        ? {
-            products: initialProductsMapped,
-            pagination: initialPagination,
-          }
-        : undefined,
     placeholderData: keepPreviousData,
   });
 
@@ -179,32 +217,14 @@ export function CatalogClient({
   );
 
   useEffect(() => {
-    const handleHeaderSearch = (event: Event) => {
-      const detail = (event as CustomEvent<string>).detail;
-      const nextSearch = typeof detail === "string" ? detail : "";
+    if (!showInitialLoader || productsQuery.isFetching) {
+      return;
+    }
 
-      setSearchTerm(nextSearch);
-      setSelectedBrands([]);
-      setEffectiveBrands([]);
-      setIsNewOnly(false);
-      setIsSaleOnly(false);
-      setEffectiveIsNew(false);
-      setEffectiveIsSale(false);
-      setCurrentPage(1);
-    };
-
-    window.addEventListener(
-      "catalog-search-change",
-      handleHeaderSearch as EventListener
-    );
-
-    return () => {
-      window.removeEventListener(
-        "catalog-search-change",
-        handleHeaderSearch as EventListener
-      );
-    };
-  }, []);
+    startTransition(() => {
+      setShowInitialLoader(false);
+    });
+  }, [productsQuery.isFetching, showInitialLoader]);
 
   // Triggers a fresh server fetch for isNew/isSale — the DB fields
   // (isNewProduct, isOnSale) are not reliably present on all records, so
@@ -324,11 +344,16 @@ export function CatalogClient({
     [facetSourceProducts]
   );
 
-  const filteredProducts = useMemo(() => {
+  const hasLocalFilters =
+    inStockOnly || minPrice.trim().length > 0 || maxPrice.trim().length > 0;
+
+  const locallyFilteredProducts = useMemo(() => {
     const min = minPrice ? Number(minPrice) : null;
     const max = maxPrice ? Number(maxPrice) : null;
 
-    const base = products.filter((product) => {
+    const source = hasLocalFilters ? facetSourceProducts : products;
+
+    const base = source.filter((product) => {
       if (initialCategory) {
         const productCategory = normalizeToken(product.category ?? "");
         const productCategoryId = normalizeToken(product.categoryId ?? "");
@@ -373,7 +398,62 @@ export function CatalogClient({
     }
 
     return base;
-  }, [products, initialCategory, inStockOnly, minPrice, maxPrice, sortOrder]);
+  }, [
+    facetSourceProducts,
+    hasLocalFilters,
+    initialCategory,
+    inStockOnly,
+    maxPrice,
+    minPrice,
+    products,
+    sortOrder,
+  ]);
+
+  const derivedPagination = useMemo(() => {
+    if (!hasLocalFilters) {
+      return pagination;
+    }
+
+    const total = locallyFilteredProducts.length;
+    const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
+
+    return {
+      page: Math.min(currentPage, totalPages),
+      limit: PAGE_LIMIT,
+      total,
+      totalPages,
+    } satisfies Pagination;
+  }, [
+    currentPage,
+    hasLocalFilters,
+    locallyFilteredProducts.length,
+    pagination,
+  ]);
+
+  const filteredProducts = useMemo(() => {
+    if (!hasLocalFilters) {
+      return locallyFilteredProducts;
+    }
+
+    const start = (currentPage - 1) * PAGE_LIMIT;
+    return locallyFilteredProducts.slice(start, start + PAGE_LIMIT);
+  }, [currentPage, hasLocalFilters, locallyFilteredProducts]);
+
+  useEffect(() => {
+    if (!hasLocalFilters) {
+      return;
+    }
+
+    const totalPages = Math.max(
+      1,
+      Math.ceil(locallyFilteredProducts.length / PAGE_LIMIT)
+    );
+    if (currentPage > totalPages) {
+      startTransition(() => {
+        setCurrentPage(totalPages);
+      });
+    }
+  }, [currentPage, hasLocalFilters, locallyFilteredProducts.length]);
 
   const handleToggleBrand = useCallback((brand: string) => {
     setSelectedBrands((prev) => {
@@ -541,11 +621,10 @@ export function CatalogClient({
     return [initialCategory];
   })();
 
-  const pageCount = Math.max(1, pagination?.totalPages ?? 1);
-  const shouldShowPagination = pageCount > 1;
-
-  // For debugging: track render state
-  // Commented out to keep console clean during normal operation
+  const effectivePagination = derivedPagination;
+  const effectivePageCount = Math.max(1, effectivePagination?.totalPages ?? 1);
+  const shouldShowPagination = effectivePageCount > 1;
+  const isCatalogLoading = showInitialLoader;
 
   const handlePageChange = ({ selected }: PageChangeEvent) => {
     const nextPage = selected + 1;
@@ -604,44 +683,48 @@ export function CatalogClient({
             onViewModeChange={setViewMode}
             sortOrder={sortOrder}
             onSortOrderChange={setSortOrder}
-            productsCount={pagination?.total ?? filteredProducts.length}
+            productsCount={
+              effectivePagination?.total ?? filteredProducts.length
+            }
             title={breadcrumbSegments[breadcrumbSegments.length - 1]}
           />
 
-          {productsQuery.isFetching && (
+          {isCatalogLoading ? (
             <div className={styles.pageLoader} role="status" aria-live="polite">
-              Завантаження сторінки...
+              <Loader />
             </div>
-          )}
+          ) : (
+            <>
+              <ProductList
+                products={filteredProducts}
+                viewMode={viewMode}
+                onResetFilters={clearFilters}
+              />
 
-          <ProductList
-            products={filteredProducts}
-            viewMode={viewMode}
-            onResetFilters={clearFilters}
-          />
-
-          {shouldShowPagination && (
-            <ReactPaginate
-              breakLabel="..."
-              nextLabel="Далі"
-              previousLabel="Назад"
-              onPageChange={handlePageChange}
-              pageRangeDisplayed={3}
-              marginPagesDisplayed={1}
-              pageCount={pageCount}
-              forcePage={currentPage - 1}
-              containerClassName={styles.pagination}
-              pageClassName={styles.pageItem}
-              pageLinkClassName={styles.pageLink}
-              previousClassName={styles.pageItem}
-              previousLinkClassName={styles.pageLink}
-              nextClassName={styles.pageItem}
-              nextLinkClassName={styles.pageLink}
-              breakClassName={styles.pageItem}
-              breakLinkClassName={styles.pageLink}
-              activeClassName={styles.pageItemActive}
-              disabledClassName={styles.pageItemDisabled}
-            />
+              {shouldShowPagination && (
+                <ReactPaginate
+                  breakLabel="..."
+                  nextLabel="Далі"
+                  previousLabel="Назад"
+                  onPageChange={handlePageChange}
+                  pageRangeDisplayed={3}
+                  marginPagesDisplayed={1}
+                  pageCount={effectivePageCount}
+                  forcePage={currentPage - 1}
+                  containerClassName={styles.pagination}
+                  pageClassName={styles.pageItem}
+                  pageLinkClassName={styles.pageLink}
+                  previousClassName={styles.pageItem}
+                  previousLinkClassName={styles.pageLink}
+                  nextClassName={styles.pageItem}
+                  nextLinkClassName={styles.pageLink}
+                  breakClassName={styles.pageItem}
+                  breakLinkClassName={styles.pageLink}
+                  activeClassName={styles.pageItemActive}
+                  disabledClassName={styles.pageItemDisabled}
+                />
+              )}
+            </>
           )}
         </main>
       </div>

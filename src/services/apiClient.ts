@@ -16,7 +16,12 @@ import type {
   RefreshTokenData,
   User,
 } from "@/types/auth";
-import { clearAccessToken, setAccessToken } from "@/utils/token";
+import {
+  clearAccessToken,
+  clearRole,
+  setAccessToken,
+  setRole,
+} from "@/utils/token";
 import { getAccessToken } from "@/utils/token";
 
 // CSR client for Client Components and TanStack Query hooks.
@@ -74,32 +79,41 @@ const extractPagination = (payload: unknown): Pagination | null => {
     return null;
   }
 
-  const candidate = payload as Record<string, any>;
+  const candidate = payload as Record<string, unknown>;
+
+  const pick = (record: Record<string, unknown>, key: string): unknown => {
+    return record[key];
+  };
 
   // Try multiple locations for pagination data
-  let pagination: any;
+  let pagination: Record<string, unknown> | null = null;
 
   // Option 1: explicit pagination object at top level
-  if (candidate.pagination && typeof candidate.pagination === "object") {
-    pagination = candidate.pagination;
+  if (
+    pick(candidate, "pagination") &&
+    typeof pick(candidate, "pagination") === "object"
+  ) {
+    pagination = pick(candidate, "pagination") as Record<string, unknown>;
   }
   // Option 2: explicit pagination object nested in data
   else if (
-    candidate.data &&
-    typeof candidate.data === "object" &&
-    candidate.data.pagination &&
-    typeof candidate.data.pagination === "object"
+    pick(candidate, "data") &&
+    typeof pick(candidate, "data") === "object"
   ) {
-    pagination = candidate.data.pagination;
-  }
-  // Option 3: pagination fields are top-level in data object
-  else if (candidate.data && typeof candidate.data === "object") {
-    pagination = {
-      page: candidate.data.page ?? candidate.data.currentPage,
-      limit: candidate.data.limit ?? candidate.data.itemsPerPage,
-      total: candidate.data.total ?? candidate.data.totalItems,
-      totalPages: candidate.data.totalPages,
-    };
+    const nestedData = pick(candidate, "data") as Record<string, unknown>;
+    const nestedPagination = nestedData.pagination;
+
+    if (nestedPagination && typeof nestedPagination === "object") {
+      pagination = nestedPagination as Record<string, unknown>;
+    } else {
+      // Option 3: pagination fields are top-level in data object
+      pagination = {
+        page: nestedData.page ?? nestedData.currentPage,
+        limit: nestedData.limit ?? nestedData.itemsPerPage,
+        total: nestedData.total ?? nestedData.totalItems,
+        totalPages: nestedData.totalPages,
+      };
+    }
   }
 
   if (!pagination || typeof pagination !== "object") {
@@ -280,6 +294,23 @@ const normalizeUser = (raw: User & { _id?: string; name?: string }): User => ({
   firstName: raw.firstName ?? raw.name,
 });
 
+const resolveAuthToken = (
+  payload: Partial<LoginData> | Partial<RefreshTokenData>
+): string | null => {
+  const tokenCandidate = payload.accessToken ?? payload.token;
+
+  if (typeof tokenCandidate !== "string") {
+    return null;
+  }
+
+  const normalized = tokenCandidate.trim();
+  if (!normalized || normalized === "undefined" || normalized === "null") {
+    return null;
+  }
+
+  return normalized;
+};
+
 const normalizeCartPayload = (payload: unknown): CartData => {
   const candidate = payload as
     | CartData
@@ -294,7 +325,63 @@ const normalizeCartPayload = (payload: unknown): CartData => {
         : null;
 
     if (nested && Array.isArray(nested.items)) {
-      return nested as CartData;
+      const items = nested.items as Array<Record<string, unknown>>;
+      const subtotal =
+        typeof nested.subtotal === "number" && Number.isFinite(nested.subtotal)
+          ? nested.subtotal
+          : 0;
+      const itemsCount =
+        typeof nested.itemsCount === "number" &&
+        Number.isFinite(nested.itemsCount)
+          ? nested.itemsCount
+          : items.reduce((sum, item) => {
+              const quantity = Number(item.quantity ?? 0);
+              return sum + (Number.isFinite(quantity) ? quantity : 0);
+            }, 0);
+
+      return {
+        items: items.map((item) => {
+          const productObj =
+            item.product && typeof item.product === "object"
+              ? (item.product as Record<string, unknown>)
+              : null;
+
+          const productId =
+            (item.productId as string | undefined) ??
+            (productObj?._id as string | undefined) ??
+            (productObj?.id as string | undefined) ??
+            "";
+
+          const quantity = Number(item.quantity ?? 1);
+          const price = Number(item.price ?? productObj?.price ?? 0);
+
+          return {
+            id: (item.id as string | undefined) ?? productId,
+            productId,
+            quantity: Number.isFinite(quantity) ? quantity : 1,
+            price: Number.isFinite(price) ? price : 0,
+            product: productObj
+              ? {
+                  ...(productObj as object),
+                  id: (productObj.id as string | undefined) ?? productId,
+                  name:
+                    (productObj.name as string | undefined) ??
+                    "Товар без назви",
+                  price: Number(
+                    Number.isFinite(Number(productObj.price))
+                      ? Number(productObj.price)
+                      : price
+                  ),
+                  image:
+                    (productObj.image as string | undefined) ??
+                    (productObj.mainImage as string | undefined),
+                }
+              : undefined,
+          };
+        }),
+        subtotal,
+        itemsCount,
+      };
     }
 
     // Backend cart mutations may return a plain cart array in data.
@@ -323,6 +410,9 @@ const normalizeCartPayload = (payload: unknown): CartData => {
             ? {
                 ...(productObj as object),
                 id: (productObj.id as string | undefined) ?? productId,
+                name:
+                  (productObj.name as string | undefined) ?? "Товар без назви",
+                price: Number.isFinite(price) ? price : 0,
                 image:
                   (productObj.image as string | undefined) ??
                   (productObj.mainImage as string | undefined),
@@ -470,10 +560,23 @@ export const authService = {
     }
 
     const loginData = response.data.data;
-    setAccessToken(loginData.accessToken);
+    const accessToken = resolveAuthToken(loginData);
+
+    if (accessToken) {
+      setAccessToken(accessToken);
+    } else {
+      clearAccessToken();
+    }
+
+    if (loginData.user?.role) {
+      setRole(loginData.user.role);
+    } else {
+      clearRole();
+    }
 
     return {
       ...loginData,
+      accessToken: accessToken ?? "",
       user: normalizeUser(
         loginData.user as User & { _id?: string; name?: string }
       ),
@@ -486,7 +589,13 @@ export const authService = {
       {}
     );
 
-    const accessToken = response.data.data.accessToken;
+    const accessToken = resolveAuthToken(response.data.data);
+
+    if (!accessToken) {
+      clearAccessToken();
+      throw new Error("Не вдалося оновити токен сесії");
+    }
+
     setAccessToken(accessToken);
 
     return accessToken;
@@ -508,7 +617,15 @@ export const authService = {
         const response = await apiClient.get<
           ApiResponse<User & { _id?: string; name?: string }>
         >(`${AUTH_BASE}/me`);
-        return normalizeUser(response.data.data);
+        const user = normalizeUser(response.data.data);
+
+        if (user.role) {
+          setRole(user.role);
+        } else {
+          clearRole();
+        }
+
+        return user;
       } catch (error) {
         const status =
           typeof error === "object" &&
@@ -537,6 +654,7 @@ export const authService = {
       await apiClient.post(`${AUTH_BASE}/logout`, {});
     } finally {
       clearAccessToken();
+      clearRole();
     }
   },
 };
@@ -601,7 +719,61 @@ export async function removeFromWishlistCSR(
 export async function createOrderCSR(
   payload: CreateOrderPayload
 ): Promise<OrderResult> {
-  const response = await apiClient.post("/api/orders", payload);
+  const rawPayload = payload as CreateOrderPayload & {
+    paymentMethod?: string;
+    deliveryMethod?: string;
+    shippingAddress?: {
+      name?: string;
+      fullName?: string;
+      phone?: string;
+      city?: string;
+      street?: string;
+      building?: string;
+      apartment?: string;
+      comment?: string;
+      addressLine1?: string;
+      addressLine2?: string;
+    };
+  };
+
+  const address = rawPayload.shippingAddress ?? {};
+  const rawPaymentMethod = (rawPayload.paymentMethod ?? "") as string;
+  const rawDeliveryMethod = (rawPayload.deliveryMethod ?? "") as string;
+
+  const normalizedPaymentMethod =
+    rawPaymentMethod === "cash_on_delivery"
+      ? "cash"
+      : rawPaymentMethod === "card" ||
+        rawPaymentMethod === "cash" ||
+        rawPaymentMethod === "online"
+      ? rawPaymentMethod
+      : "cash";
+
+  const normalizedDeliveryMethod =
+    rawDeliveryMethod === "nova_poshta"
+      ? "post"
+      : rawDeliveryMethod === "courier" ||
+        rawDeliveryMethod === "pickup" ||
+        rawDeliveryMethod === "post"
+      ? rawDeliveryMethod
+      : "courier";
+
+  const normalizedPayload = {
+    items: payload.items,
+    shippingAddress: {
+      name: (address.name ?? address.fullName ?? "").trim(),
+      phone: (address.phone ?? "").trim(),
+      city: (address.city ?? "").trim(),
+      street: (address.street ?? address.addressLine1 ?? "").trim(),
+      building: (address.building ?? address.addressLine2 ?? "1").trim(),
+      ...(address.apartment ? { apartment: address.apartment.trim() } : {}),
+      ...(address.comment ? { comment: address.comment.trim() } : {}),
+    },
+    paymentMethod: normalizedPaymentMethod,
+    deliveryMethod: normalizedDeliveryMethod,
+  };
+
+  const response = await apiClient.post("/api/orders", normalizedPayload);
   return normalizeOrderPayload(response.data);
 }
 

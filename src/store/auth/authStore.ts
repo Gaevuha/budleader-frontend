@@ -66,6 +66,32 @@ export const useAuthStore = create<AuthStore>((set, get) => ({
         error: null,
       });
     } catch (error) {
+      const status =
+        typeof error === "object" &&
+        error &&
+        "response" in error &&
+        typeof (error as { response?: { status?: number } }).response
+          ?.status === "number"
+          ? (error as { response?: { status?: number } }).response?.status
+          : undefined;
+
+      const isRateLimitError =
+        status === 429 ||
+        (error instanceof Error &&
+          error.message.includes("обмежено запити сесії"));
+
+      if (isRateLimitError) {
+        set((state) => ({
+          isLoading: false,
+          isInitialized: true,
+          error: "Сесію тимчасово обмежено. Повторіть спробу трохи пізніше",
+          // Keep the last known auth state instead of forcing logout on 429.
+          user: state.user,
+          isAuthenticated: state.isAuthenticated,
+        }));
+        return;
+      }
+
       set({
         user: null,
         isAuthenticated: false,

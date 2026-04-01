@@ -1,10 +1,50 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Package, Search, Filter, Edit, Trash2, Eye } from "lucide-react";
+import { toast } from "sonner";
+
 import type { AppOrder } from "@/types/app";
 import { apiClient } from "@/services/apiClient";
-import { Package, Search, Filter, Edit, Trash2, Eye } from "lucide-react";
 import styles from "./Orders.module.css";
+
+const normalizeOrderStatus = (status?: string): AppOrder["status"] => {
+  const normalized = (status ?? "pending").toLowerCase();
+
+  if (
+    normalized === "pending" ||
+    normalized === "paid" ||
+    normalized === "processing" ||
+    normalized === "shipped" ||
+    normalized === "received" ||
+    normalized === "delivered" ||
+    normalized === "cancelled" ||
+    normalized === "new"
+  ) {
+    return normalized;
+  }
+
+  return "pending";
+};
+
+const getStatusClass = (status: string, css: Record<string, string>) => {
+  switch (status) {
+    case "pending":
+    case "new":
+      return css.statusPending;
+    case "paid":
+    case "processing":
+    case "shipped":
+    case "received":
+      return css.statusProcessing;
+    case "delivered":
+      return css.statusCompleted;
+    case "cancelled":
+      return css.statusCancelled;
+    default:
+      return "";
+  }
+};
 
 export const Orders = () => {
   const [orders, setOrders] = useState<AppOrder[]>([]);
@@ -43,7 +83,7 @@ export const Orders = () => {
                 date?: string;
                 totalAmount?: number;
                 total?: number;
-                status?: AppOrder["status"];
+                status?: string;
               };
 
               const id = raw.id ?? raw._id;
@@ -57,7 +97,7 @@ export const Orders = () => {
                 customerEmail: raw.customerEmail ?? "-",
                 date: raw.date ?? raw.createdAt ?? new Date().toISOString(),
                 totalAmount: raw.totalAmount ?? raw.total ?? 0,
-                status: raw.status ?? "new",
+                status: normalizeOrderStatus(raw.status),
               } satisfies AppOrder;
             })
             .filter((value): value is AppOrder => value !== null)
@@ -70,37 +110,28 @@ export const Orders = () => {
     void loadOrders();
   }, []);
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case "new":
-        return "Нове";
-      case "processing":
-        return "В обробці";
-      case "shipped":
-        return "Відправлено";
-      case "delivered":
-        return "Доставлено";
-      case "cancelled":
-        return "Скасовано";
-      default:
-        return status;
+  const handleStatusChange = async (
+    orderId: string,
+    status: AppOrder["status"]
+  ) => {
+    try {
+      await apiClient.put(`/api/orders/admin/${orderId}/status`, { status });
+      setOrders((prev) =>
+        prev.map((item) => (item.id === orderId ? { ...item, status } : item))
+      );
+      toast.success("Статус замовлення оновлено");
+    } catch {
+      toast.error("Не вдалося оновити статус");
     }
   };
 
-  const getStatusClass = (status: string) => {
-    switch (status) {
-      case "new":
-        return styles.statusPending;
-      case "processing":
-        return styles.statusProcessing;
-      case "shipped":
-        return styles.statusProcessing;
-      case "delivered":
-        return styles.statusCompleted;
-      case "cancelled":
-        return styles.statusCancelled;
-      default:
-        return "";
+  const handleDeleteOrder = async (orderId: string) => {
+    try {
+      await apiClient.delete(`/api/orders/${orderId}`);
+      setOrders((prev) => prev.filter((item) => item.id !== orderId));
+      toast.success("Замовлення видалено");
+    } catch {
+      toast.error("Не вдалося видалити замовлення");
     }
   };
 
@@ -144,9 +175,11 @@ export const Orders = () => {
             onChange={(e) => setStatusFilter(e.target.value)}
           >
             <option value="all">Всі статуси</option>
-            <option value="new">Нові</option>
+            <option value="pending">Очікує</option>
+            <option value="paid">Оплачено</option>
             <option value="processing">В обробці</option>
             <option value="shipped">Відправлені</option>
+            <option value="received">Отримані</option>
             <option value="delivered">Доставлені</option>
             <option value="cancelled">Скасовані</option>
           </select>
@@ -187,23 +220,22 @@ export const Orders = () => {
                   <td>
                     <select
                       className={`${styles.statusSelect} ${getStatusClass(
-                        order.status
+                        order.status,
+                        styles
                       )}`}
                       value={order.status}
-                      onChange={(e) => {
-                        const nextStatus = e.target.value as AppOrder["status"];
-                        setOrders((prev) =>
-                          prev.map((item) =>
-                            item.id === order.id
-                              ? { ...item, status: nextStatus }
-                              : item
-                          )
-                        );
-                      }}
+                      onChange={(e) =>
+                        void handleStatusChange(
+                          order.id,
+                          e.target.value as AppOrder["status"]
+                        )
+                      }
                     >
-                      <option value="new">Нове</option>
+                      <option value="pending">Очікує</option>
+                      <option value="paid">Оплачено</option>
                       <option value="processing">В обробці</option>
                       <option value="shipped">Відправлено</option>
+                      <option value="received">Отримано</option>
                       <option value="delivered">Доставлено</option>
                       <option value="cancelled">Скасовано</option>
                     </select>
@@ -221,6 +253,7 @@ export const Orders = () => {
                       </button>
                       <button
                         className={`${styles.actionBtn} ${styles.deleteBtn}`}
+                        onClick={() => void handleDeleteOrder(order.id)}
                         title="Видалити"
                       >
                         <Trash2 size={18} />

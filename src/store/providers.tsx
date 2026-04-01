@@ -10,6 +10,8 @@ import {
   getCartCSR,
   getWishlistCSR,
 } from "@/services/apiClient";
+import { useCartQuery } from "@/queries/cartQueries";
+import { useWishlistQuery } from "@/queries/wishlistQueries";
 import { mapApiProductToAppProduct } from "@/services/api";
 import { useAuthStore } from "@/store/auth/authStore";
 import { useCartStore } from "@/store/cart/cartStore";
@@ -29,9 +31,14 @@ function AppBootstrap() {
   const fetchMe = useAuthStore((state) => state.fetchMe);
   const localCart = useCartStore((state) => state.cart);
   const setCart = useCartStore((state) => state.setCart);
+  const clearCart = useCartStore((state) => state.clearCart);
   const localWishlist = useWishlistStore((state) => state.wishlist);
   const setWishlist = useWishlistStore((state) => state.setWishlist);
+  const clearWishlist = useWishlistStore((state) => state.clearWishlist);
   const syncedUserIdRef = useRef<string | null>(null);
+  const wasAuthenticatedRef = useRef(false);
+  const cartQuery = useCartQuery(isAuthenticated);
+  const wishlistQuery = useWishlistQuery(isAuthenticated);
 
   useEffect(() => {
     if (bootstrapStarted) {
@@ -56,8 +63,16 @@ function AppBootstrap() {
       return;
     }
 
-    void fetchMe();
-  }, [accessToken, fetchMe]);
+    // initializeAuth already performs the initial me() call, so this effect is
+    // only a safe fallback when user data is still missing.
+    if (user?.id) {
+      return;
+    }
+
+    void fetchMe().catch(() => {
+      // Session errors are handled in authStore; avoid unhandled runtime errors.
+    });
+  }, [accessToken, fetchMe, user?.id]);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) {
@@ -99,7 +114,7 @@ function AppBootstrap() {
 
         const normalizedCart = serverCart.items.map((item) => ({
           ...(item.product
-            ? (mapApiProductToAppProduct(item.product) ?? {
+            ? mapApiProductToAppProduct(item.product) ?? {
                 id: item.productId,
                 name: "Товар",
                 price: item.price,
@@ -107,7 +122,7 @@ function AppBootstrap() {
                 category: "Загальна",
                 brand: "Budleader",
                 inStock: true,
-              })
+              }
             : {
                 id: item.productId,
                 name: "Товар",
@@ -128,7 +143,79 @@ function AppBootstrap() {
     };
 
     void syncCommerce();
-  }, [isAuthenticated, localCart, localWishlist, setCart, setWishlist, user?.id]);
+  }, [
+    isAuthenticated,
+    localCart,
+    localWishlist,
+    setCart,
+    setWishlist,
+    user?.id,
+  ]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    const serverItems = cartQuery.data?.items;
+    if (!serverItems) {
+      return;
+    }
+
+    const normalizedCart = serverItems.map((item) => ({
+      ...(item.product
+        ? mapApiProductToAppProduct(item.product) ?? {
+            id: item.productId,
+            name: "Товар",
+            price: item.price,
+            image: "",
+            category: "Загальна",
+            brand: "Budleader",
+            inStock: true,
+          }
+        : {
+            id: item.productId,
+            name: "Товар",
+            price: item.price,
+            image: "",
+            category: "Загальна",
+            brand: "Budleader",
+            inStock: true,
+          }),
+      quantity: item.quantity,
+    }));
+
+    setCart(normalizedCart);
+  }, [cartQuery.data?.items, isAuthenticated, setCart]);
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      return;
+    }
+
+    const serverWishlist = wishlistQuery.data?.items;
+    if (!serverWishlist) {
+      return;
+    }
+
+    setWishlist(serverWishlist);
+  }, [isAuthenticated, setWishlist, wishlistQuery.data?.items]);
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      wasAuthenticatedRef.current = true;
+      return;
+    }
+
+    // If a logged-in session existed, local persisted commerce state may
+    // contain mirrored server data and should be cleared on logout.
+    if (wasAuthenticatedRef.current) {
+      clearCart();
+      clearWishlist();
+      syncedUserIdRef.current = null;
+      wasAuthenticatedRef.current = false;
+    }
+  }, [clearCart, clearWishlist, isAuthenticated]);
 
   return null;
 }

@@ -13,28 +13,49 @@ const normalizeCategories = (raw: unknown): Category[] => {
     return [];
   }
 
-  const candidate = raw as
-    | CategoriesData
-    | Category[]
-    | { data?: CategoriesData };
+  const candidate = raw as Record<string, unknown>;
+  const nestedData = "data" in candidate ? candidate.data : null;
 
-  if (Array.isArray(candidate)) {
-    return candidate;
-  }
+  const rows = Array.isArray(raw)
+    ? raw
+    : Array.isArray(candidate.categories)
+    ? candidate.categories
+    : nestedData &&
+      typeof nestedData === "object" &&
+      Array.isArray((nestedData as CategoriesData).categories)
+    ? (nestedData as CategoriesData).categories
+    : Array.isArray(nestedData)
+    ? nestedData
+    : [];
 
-  if ("categories" in candidate && Array.isArray(candidate.categories)) {
-    return candidate.categories;
-  }
+  return rows
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
 
-  if (
-    "data" in candidate &&
-    candidate.data &&
-    Array.isArray(candidate.data.categories)
-  ) {
-    return candidate.data.categories;
-  }
+      const record = item as {
+        id?: string;
+        _id?: string;
+        name?: string;
+        slug?: string;
+        productCount?: number;
+        productsCount?: number;
+      };
 
-  return [];
+      const id = record.id ?? record._id;
+      if (!id || !record.name) {
+        return null;
+      }
+
+      return {
+        id,
+        name: record.name,
+        slug: record.slug,
+        productsCount: record.productsCount ?? record.productCount ?? 0,
+      } satisfies Category;
+    })
+    .filter((item): item is Category => item !== null);
 };
 
 export default function CategoriesPage() {

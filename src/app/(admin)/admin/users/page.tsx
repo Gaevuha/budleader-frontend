@@ -8,12 +8,23 @@ import {
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import { apiClient } from "@/services/apiClient";
 import type { AppUser } from "@/types/app";
 import styles from "./Users.module.css";
 
 export const Users = () => {
   const [users, setUsers] = useState<AppUser[]>([]);
+
+  const handleDeleteUser = async (id: string) => {
+    try {
+      await apiClient.delete(`/api/users/${id}`);
+      setUsers((prev) => prev.filter((item) => item.id !== id));
+      toast.success("Користувача видалено");
+    } catch {
+      toast.error("Не вдалося видалити користувача");
+    }
+  };
 
   useEffect(() => {
     const loadUsers = async () => {
@@ -44,7 +55,7 @@ export const Users = () => {
                 name?: string;
                 firstName?: string;
                 email?: string;
-                role?: "admin" | "customer";
+                role?: "admin" | "user" | "customer" | "moderator";
                 createdAt?: string;
                 date?: string;
               };
@@ -60,7 +71,7 @@ export const Users = () => {
                 id,
                 name,
                 email: raw.email,
-                role: raw.role ?? "customer",
+                role: raw.role ?? "user",
                 date: raw.date ?? raw.createdAt ?? new Date().toISOString(),
               } satisfies AppUser;
             })
@@ -85,7 +96,7 @@ export const Users = () => {
         <table className={styles.table}>
           <thead>
             <tr>
-              <th className={styles.th}>Ім'я</th>
+              <th className={styles.th}>Ім&apos;я</th>
               <th className={styles.th}>Email</th>
               <th className={styles.th}>Роль</th>
               <th className={styles.th}>Дата реєстрації</th>
@@ -119,7 +130,11 @@ export const Users = () => {
                       }`}
                     >
                       {user.role === "admin" && <Shield size={12} />}
-                      {user.role === "admin" ? "Адмін" : "Клієнт"}
+                      {user.role === "admin"
+                        ? "Адмін"
+                        : user.role === "moderator"
+                        ? "Модератор"
+                        : "Користувач"}
                     </span>
                   </td>
                   <td className={styles.td}>
@@ -127,11 +142,7 @@ export const Users = () => {
                   </td>
                   <td className={styles.td}>
                     <button
-                      onClick={() =>
-                        setUsers((prev) =>
-                          prev.filter((item) => item.id !== user.id)
-                        )
-                      }
+                      onClick={() => void handleDeleteUser(user.id)}
                       disabled={user.role === "admin"}
                       className={`${styles.actionBtn} ${
                         user.role === "admin" ? styles.actionBtnDisabled : ""

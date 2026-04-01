@@ -5,6 +5,7 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { Button } from "@/components/UI/Button/Button";
 import { motion } from "framer-motion";
+import { toast } from "sonner";
 import { apiClient } from "@/services/apiClient";
 import type { AppProduct } from "@/types/app";
 import { PRODUCT_PLACEHOLDER_SRC, resolveMediaUrl } from "@/utils/media";
@@ -12,6 +13,16 @@ import styles from "./Products.module.css";
 
 export const Products = () => {
   const [products, setProducts] = useState<AppProduct[]>([]);
+
+  const handleDeleteProduct = async (id: string) => {
+    try {
+      await apiClient.delete(`/api/products/${id}`);
+      setProducts((prev) => prev.filter((item) => item.id !== id));
+      toast.success("Товар видалено");
+    } catch {
+      toast.error("Не вдалося видалити товар");
+    }
+  };
 
   useEffect(() => {
     const loadProducts = async () => {
@@ -163,11 +174,7 @@ export const Products = () => {
                       <Edit2 size={18} />
                     </button>
                     <button
-                      onClick={() =>
-                        setProducts((prev) =>
-                          prev.filter((item) => item.id !== product.id)
-                        )
-                      }
+                      onClick={() => void handleDeleteProduct(product.id)}
                       className={`${styles.actionBtn} ${styles.actionBtnDelete}`}
                     >
                       <Trash2 size={18} />

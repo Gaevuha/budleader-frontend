@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Heart, Send, ShoppingCart, Star } from "lucide-react";
@@ -16,7 +16,11 @@ import { mapApiProductToAppProduct } from "@/services/api";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { useAuthStore } from "@/store/auth/authStore";
-import { useAddToCartMutation } from "@/queries/cartQueries";
+import {
+  useAddToCartMutation,
+  useCartQuery,
+  useRemoveFromCartMutation,
+} from "@/queries/cartQueries";
 import {
   useAddToWishlistMutation,
   useRemoveFromWishlistMutation,
@@ -32,15 +36,26 @@ type RawProduct = Product & {
 };
 
 export function ProductClient({ product }: ProductClientProps) {
+  const localCart = useCartStore((state) => state.cart);
   const addToCartLocal = useCartStore((state) => state.addToCart);
+  const removeFromCartLocal = useCartStore((state) => state.removeFromCart);
   const wishlistLocal = useWishlistStore((state) => state.wishlist);
   const toggleWishlistLocal = useWishlistStore((state) => state.toggleWishlist);
   const addToCartMutation = useAddToCartMutation();
+  const removeFromCartMutation = useRemoveFromCartMutation();
   const addToWishlistMutation = useAddToWishlistMutation();
   const removeFromWishlistMutation = useRemoveFromWishlistMutation();
-  const wishlistQuery = useWishlistQuery(isAuthenticated);
   const currentUser = useAuthStore((state) => state.user);
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const isAuthenticated = Boolean(accessToken);
+  const cartQuery = useCartQuery(isAuthenticated);
+  const wishlistQuery = useWishlistQuery(isAuthenticated);
+  const [optimisticInCart, setOptimisticInCart] = useState<boolean | null>(
+    null
+  );
+  const [optimisticWishlisted, setOptimisticWishlisted] = useState<
+    boolean | null
+  >(null);
 
   const [reviewText, setReviewText] = useState("");
   const [selectedRating, setSelectedRating] = useState(5);
@@ -71,39 +86,83 @@ export function ProductClient({ product }: ProductClientProps) {
   }, [product]);
 
   const serverWishlist = wishlistQuery.data?.items ?? [];
+  const serverCartItems = cartQuery.data?.items ?? [];
   const effectiveWishlist = isAuthenticated ? serverWishlist : wishlistLocal;
   const isWishlisted = effectiveWishlist.some(
     (item) => item.id === appProduct.id
   );
+  const isInCart = isAuthenticated
+    ? serverCartItems.some(
+        (item) => item.productId === appProduct.id || item.id === appProduct.id
+      )
+    : localCart.some((item) => item.id === appProduct.id);
+  const isWishlistedUi = optimisticWishlisted ?? isWishlisted;
+  const isInCartUi = optimisticInCart ?? isInCart;
   const imageSrc = imageFailed ? PRODUCT_PLACEHOLDER_SRC : appProduct.image;
 
+  useEffect(() => {
+    setOptimisticInCart(null);
+  }, [isInCart]);
+
+  useEffect(() => {
+    setOptimisticWishlisted(null);
+  }, [isWishlisted]);
+
   const handleAddToCart = async () => {
+    const wasInCart = isInCartUi;
+    const cartEntry = serverCartItems.find(
+      (item) => item.productId === appProduct.id || item.id === appProduct.id
+    );
+    const removeProductId = cartEntry?.productId ?? appProduct.id;
+
     if (isAuthenticated) {
+      setOptimisticInCart(!wasInCart);
+
       try {
-        await addToCartMutation.mutateAsync({
-          productId: appProduct.id,
-          quantity: 1,
-        });
+        if (wasInCart) {
+          await removeFromCartMutation.mutateAsync(removeProductId);
+          removeFromCartLocal(appProduct.id);
+        } else {
+          await addToCartMutation.mutateAsync({
+            productId: appProduct.id,
+            quantity: 1,
+          });
+          addToCartLocal(appProduct);
+        }
       } catch {
-        toast.error("Не вдалося додати товар у кошик");
+        setOptimisticInCart(wasInCart);
+        toast.error("Не вдалося оновити кошик");
         return;
       }
     } else {
-      addToCartLocal(appProduct);
+      if (wasInCart) {
+        removeFromCartLocal(appProduct.id);
+      } else {
+        addToCartLocal(appProduct);
+      }
     }
 
-    toast.success("Товар додано у кошик");
+    toast.success(
+      wasInCart ? "Товар видалено з кошика" : "Товар додано у кошик"
+    );
   };
 
   const handleToggleWishlist = async () => {
+    const wasWishlisted = isWishlistedUi;
+
     if (isAuthenticated) {
+      setOptimisticWishlisted(!wasWishlisted);
+
       try {
-        if (isWishlisted) {
+        if (wasWishlisted) {
           await removeFromWishlistMutation.mutateAsync(appProduct.id);
         } else {
           await addToWishlistMutation.mutateAsync(appProduct.id);
         }
+
+        toggleWishlistLocal(appProduct);
       } catch {
+        setOptimisticWishlisted(wasWishlisted);
         toast.error("Не вдалося оновити список бажань");
         return;
       }
@@ -111,7 +170,7 @@ export function ProductClient({ product }: ProductClientProps) {
       toggleWishlistLocal(appProduct);
     }
 
-    toast.success(isWishlisted ? "Видалено з обраного" : "Додано до обраного");
+    toast.success(wasWishlisted ? "Видалено з обраного" : "Додано до обраного");
   };
 
   const handleReviewSubmit = async (
@@ -246,15 +305,18 @@ export function ProductClient({ product }: ProductClientProps) {
               disabled={!appProduct.inStock}
               onClick={handleAddToCart}
             >
-              <ShoppingCart size={18} /> Купити
+              <ShoppingCart size={18} /> {isInCartUi ? "В кошику" : "Купити"}
             </button>
             <button
               className={`${styles.wishlistBtn} ${
-                isWishlisted ? styles.wishlistActive : ""
+                isWishlistedUi ? styles.wishlistActive : ""
               }`}
               onClick={handleToggleWishlist}
             >
-              <Heart size={18} fill={isWishlisted ? "currentColor" : "none"} />
+              <Heart
+                size={18}
+                fill={isWishlistedUi ? "currentColor" : "none"}
+              />
             </button>
           </div>
 

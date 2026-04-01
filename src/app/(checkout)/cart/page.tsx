@@ -4,11 +4,13 @@ import { useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Container } from "@/components/layout/Container/Container";
 import { Button } from "@/components/UI/Button/Button";
 import { AuthModal } from "@/components/UI/AuthModal/AuthModal";
 import {
+  CART_QUERY_KEY,
   useAddToCartMutation,
   useCartQuery,
   useClearCartMutation,
@@ -16,6 +18,7 @@ import {
 } from "@/queries/cartQueries";
 import { useAuthStore } from "@/store/auth/authStore";
 import { useCartStore } from "@/store/cart/cartStore";
+import type { CartData } from "@/types/cart";
 import styles from "./Cart.module.css";
 
 type CartViewItem = {
@@ -29,13 +32,27 @@ type CartViewItem = {
 
 const FALLBACK_IMAGE = "https://placehold.co/80x80?text=No+Image";
 
+const toCartData = (items: CartData["items"]): CartData => {
+  const subtotal = items.reduce(
+    (sum, item) => sum + item.price * item.quantity,
+    0
+  );
+  const itemsCount = items.reduce((sum, item) => sum + item.quantity, 0);
+
+  return {
+    items,
+    subtotal,
+    itemsCount,
+  };
+};
+
 export default function CartPage() {
   const router = useRouter();
-  const [productIdInput, setProductIdInput] = useState("");
-  const [quantityInput, setQuantityInput] = useState(1);
+  const queryClient = useQueryClient();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
 
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const accessToken = useAuthStore((state) => state.accessToken);
+  const isAuthenticated = Boolean(accessToken);
 
   const localCart = useCartStore((state) => state.cart);
   const removeLocal = useCartStore((state) => state.removeFromCart);
@@ -83,69 +100,147 @@ export default function CartPage() {
 
   const isLoading = isAuthenticated ? cartQuery.isLoading : false;
 
-  const handleAddById = async () => {
-    const productId = productIdInput.trim();
-    const quantity = Number(quantityInput);
+  const patchServerCartOptimistically = (
+    updater: (currentItems: CartData["items"]) => CartData["items"]
+  ) => {
+    const prev = queryClient.getQueryData<CartData>(CART_QUERY_KEY);
 
-    if (!productId || Number.isNaN(quantity) || quantity <= 0) {
-      return;
+    if (!prev) {
+      return null;
     }
 
-    await addToCartMutation.mutateAsync({ productId, quantity });
-    setProductIdInput("");
-    setQuantityInput(1);
+    queryClient.setQueryData<CartData>(
+      CART_QUERY_KEY,
+      toCartData(updater(prev.items))
+    );
+
+    return prev;
   };
 
-  const handleRemoveItem = async (productId: string) => {
+  const handleRemoveItem = (productId: string) => {
     if (!isAuthenticated) {
       removeLocal(productId);
       return;
     }
 
-    await removeFromCartMutation.mutateAsync(productId);
+    const prev = patchServerCartOptimistically((items) =>
+      items.filter((item) => item.productId !== productId)
+    );
+
+    removeFromCartMutation.mutate(productId, {
+      onError: () => {
+        if (prev) {
+          queryClient.setQueryData(CART_QUERY_KEY, prev);
+        }
+      },
+      onSettled: () => {
+        void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+      },
+    });
   };
 
-  const handleChangeQuantity = async (
+  const handleChangeQuantity = (
     item: CartViewItem,
     operation: "inc" | "dec"
   ) => {
     const nextQuantity =
       operation === "inc" ? item.quantity + 1 : item.quantity - 1;
 
-    if (nextQuantity < 1) {
+    if (nextQuantity < 0) {
       return;
     }
 
     if (!isAuthenticated) {
+      if (nextQuantity === 0) {
+        removeLocal(item.productId);
+        return;
+      }
+
       setQuantityLocal(item.productId, nextQuantity);
       return;
     }
 
     if (operation === "inc") {
-      await addToCartMutation.mutateAsync({
-        productId: item.productId,
-        quantity: 1,
-      });
+      const prev = patchServerCartOptimistically((items) =>
+        items.map((cartItem) =>
+          cartItem.productId === item.productId
+            ? { ...cartItem, quantity: cartItem.quantity + 1 }
+            : cartItem
+        )
+      );
+
+      addToCartMutation.mutate(
+        {
+          productId: item.productId,
+          quantity: 1,
+        },
+        {
+          onError: () => {
+            if (prev) {
+              queryClient.setQueryData(CART_QUERY_KEY, prev);
+            }
+          },
+          onSettled: () => {
+            void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+          },
+        }
+      );
+
       return;
     }
 
-    // Backend has no decrement endpoint, so fallback: remove and re-add remaining quantity.
-    await removeFromCartMutation.mutateAsync(item.productId);
-    if (nextQuantity > 0) {
-      await addToCartMutation.mutateAsync({
-        productId: item.productId,
-        quantity: nextQuantity,
-      });
-    }
+    const prev = patchServerCartOptimistically((items) => {
+      if (nextQuantity === 0) {
+        return items.filter(
+          (cartItem) => cartItem.productId !== item.productId
+        );
+      }
+
+      return items.map((cartItem) =>
+        cartItem.productId === item.productId
+          ? { ...cartItem, quantity: nextQuantity }
+          : cartItem
+      );
+    });
+
+    void (async () => {
+      try {
+        await removeFromCartMutation.mutateAsync(item.productId);
+
+        if (nextQuantity > 0) {
+          await addToCartMutation.mutateAsync({
+            productId: item.productId,
+            quantity: nextQuantity,
+          });
+        }
+      } catch {
+        if (prev) {
+          queryClient.setQueryData(CART_QUERY_KEY, prev);
+        }
+      } finally {
+        void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+      }
+    })();
   };
 
-  const handleClear = async () => {
+  const handleClear = () => {
     if (!isAuthenticated) {
       clearLocal();
       return;
     }
 
-    await clearCartMutation.mutateAsync();
+    const prev = patchServerCartOptimistically(() => []);
+
+    clearCartMutation.mutate(undefined, {
+      onError: () => {
+        if (prev) {
+          queryClient.setQueryData(CART_QUERY_KEY, prev);
+        }
+      },
+      onSettled: () => {
+        void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+      },
+    });
   };
 
   const handleCheckout = () => {
@@ -201,42 +296,6 @@ export default function CartPage() {
     <Container className={styles.container}>
       <h1 className={styles.pageTitle}>Кошик</h1>
 
-      {isAuthenticated && (
-        <div style={{ marginBottom: 16, maxWidth: 520 }}>
-          <h3 style={{ marginBottom: 10 }}>CSR: додати товар по ID</h3>
-          <div
-            style={{
-              display: "grid",
-              gap: 10,
-              gridTemplateColumns: "1fr 120px auto",
-            }}
-          >
-            <input
-              type="text"
-              value={productIdInput}
-              onChange={(event) => setProductIdInput(event.target.value)}
-              placeholder="ID товару"
-              style={{ height: 40, padding: "0 10px" }}
-            />
-            <input
-              type="number"
-              min={1}
-              value={quantityInput}
-              onChange={(event) => setQuantityInput(Number(event.target.value))}
-              placeholder="К-сть"
-              style={{ height: 40, padding: "0 10px" }}
-            />
-            <Button
-              variant="primary"
-              onClick={handleAddById}
-              disabled={addToCartMutation.isPending}
-            >
-              {addToCartMutation.isPending ? "..." : "Додати"}
-            </Button>
-          </div>
-        </div>
-      )}
-
       <div className={styles.layout}>
         <div className={styles.itemsList}>
           {cart.map((item) => (
@@ -260,14 +319,14 @@ export default function CartPage() {
               <div className={styles.quantityControls}>
                 <button
                   className={styles.qtyBtn}
-                  onClick={() => void handleChangeQuantity(item, "dec")}
+                  onClick={() => handleChangeQuantity(item, "dec")}
                 >
                   -
                 </button>
                 <span className={styles.qtyValue}>{item.quantity}</span>
                 <button
                   className={styles.qtyBtn}
-                  onClick={() => void handleChangeQuantity(item, "inc")}
+                  onClick={() => handleChangeQuantity(item, "inc")}
                 >
                   +
                 </button>
@@ -279,7 +338,7 @@ export default function CartPage() {
 
               <button
                 className={styles.removeBtn}
-                onClick={() => void handleRemoveItem(item.productId)}
+                onClick={() => handleRemoveItem(item.productId)}
               >
                 x
               </button>
@@ -315,11 +374,7 @@ export default function CartPage() {
             Оформити замовлення
           </Button>
 
-          <Button
-            variant="secondary"
-            size="lg"
-            onClick={() => void handleClear()}
-          >
+          <Button variant="secondary" size="lg" onClick={handleClear}>
             Очистити кошик
           </Button>
         </div>

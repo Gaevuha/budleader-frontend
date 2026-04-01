@@ -17,6 +17,7 @@ const CATALOG_BACKOFF_MS = 15_000;
 
 interface ProductEnvelope {
   products?: Product[];
+  items?: Product[];
   product?: Product;
   pagination?: Pagination;
 }
@@ -27,6 +28,67 @@ interface CacheEntry<T> {
 }
 
 type ProductsSSRResult = { products: Product[]; pagination: Pagination | null };
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  Boolean(value) && typeof value === "object" && !Array.isArray(value);
+
+const findNestedArrayByKeys = (
+  input: unknown,
+  keys: string[],
+  depth = 0
+): unknown[] | null => {
+  if (Array.isArray(input)) {
+    return input;
+  }
+
+  if (!isRecord(input) || depth > 5) {
+    return null;
+  }
+
+  for (const key of keys) {
+    const candidate = input[key];
+    if (Array.isArray(candidate)) {
+      return candidate;
+    }
+  }
+
+  for (const wrapperKey of ["data", "result", "payload"]) {
+    if (wrapperKey in input) {
+      const nested = findNestedArrayByKeys(input[wrapperKey], keys, depth + 1);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+
+  return null;
+};
+
+const findNestedObjectByKey = (
+  input: unknown,
+  key: string,
+  depth = 0
+): Record<string, unknown> | null => {
+  if (!isRecord(input) || depth > 5) {
+    return null;
+  }
+
+  const candidate = input[key];
+  if (isRecord(candidate)) {
+    return candidate;
+  }
+
+  for (const wrapperKey of ["data", "result", "payload"]) {
+    if (wrapperKey in input) {
+      const nested = findNestedObjectByKey(input[wrapperKey], key, depth + 1);
+      if (nested) {
+        return nested;
+      }
+    }
+  }
+
+  return null;
+};
 
 let categoriesCache: CacheEntry<Category[]> | null = null;
 let categoriesInFlight: Promise<Category[]> | null = null;
@@ -143,31 +205,13 @@ export const createApiServer = async (options?: {
 const normalizeProductsPayload = (
   payload: unknown
 ): { products: Product[]; pagination: Pagination | null } => {
-  const candidate = payload as
-    | ProductEnvelope
-    | ApiResponse<ProductEnvelope>
-    | { data?: ProductEnvelope };
+  const productsArray = findNestedArrayByKeys(payload, ["products", "items"]);
+  const paginationPayload = findNestedObjectByKey(payload, "pagination");
 
-  if (
-    payload &&
-    typeof payload === "object" &&
-    "data" in (payload as Record<string, unknown>)
-  ) {
-    const nested = (candidate as { data?: ProductEnvelope }).data;
-    if (nested && Array.isArray(nested.products)) {
-      return {
-        products: nested.products,
-        pagination: normalizePagination(nested.pagination),
-      };
-    }
-  }
-
-  if (Array.isArray((candidate as ProductEnvelope).products)) {
+  if (productsArray) {
     return {
-      products: (candidate as ProductEnvelope).products ?? [],
-      pagination: normalizePagination(
-        (candidate as ProductEnvelope).pagination
-      ),
+      products: productsArray as Product[],
+      pagination: normalizePagination(paginationPayload),
     };
   }
 
@@ -250,14 +294,10 @@ const normalizeProductsResult = (
 };
 
 const normalizeCategories = (raw: unknown): Category[] => {
-  if (!raw || typeof raw !== "object") {
+  const rows = findNestedArrayByKeys(raw, ["categories", "items"]);
+  if (!rows) {
     return [];
   }
-
-  const candidate = raw as
-    | CategoriesData
-    | Category[]
-    | { data?: CategoriesData | Category[] };
 
   const mapCategory = (item: unknown): Category | null => {
     if (!item || typeof item !== "object") {
@@ -267,15 +307,20 @@ const normalizeCategories = (raw: unknown): Category[] => {
     const rawCategory = item as {
       id?: string;
       _id?: string;
+      title?: string;
       slug?: string;
       name?: string;
       groups?: unknown[];
       subcategories?: unknown[];
+      subCategories?: unknown[];
+      children?: unknown[];
       productCount?: number;
+      productsCount?: number;
+      count?: number;
     };
 
     const id = rawCategory.id ?? rawCategory._id;
-    const name = rawCategory.name;
+    const name = rawCategory.name ?? rawCategory.title;
 
     if (!id || !name) {
       return null;
@@ -374,42 +419,41 @@ const normalizeCategories = (raw: unknown): Category[] => {
       subcategories: normalizeSubcategories(
         Array.isArray(rawCategory.groups)
           ? rawCategory.groups
-          : rawCategory.subcategories
+          : Array.isArray(rawCategory.subcategories)
+          ? rawCategory.subcategories
+          : Array.isArray(rawCategory.subCategories)
+          ? rawCategory.subCategories
+          : rawCategory.children
       ),
-      productsCount: rawCategory.productCount,
+      productsCount:
+        rawCategory.productsCount ??
+        rawCategory.productCount ??
+        rawCategory.count,
     };
   };
 
-  if (Array.isArray(candidate)) {
-    return candidate
-      .map(mapCategory)
-      .filter((value): value is Category => value !== null);
+  return rows
+    .map(mapCategory)
+    .filter((value): value is Category => value !== null);
+};
+
+const mergeCategories = (...groups: Category[][]): Category[] => {
+  const merged: Category[] = [];
+  const seen = new Set<string>();
+
+  for (const group of groups) {
+    for (const category of group) {
+      const key = `${category.id}::${category.name}`.toLowerCase();
+      if (seen.has(key)) {
+        continue;
+      }
+
+      seen.add(key);
+      merged.push(category);
+    }
   }
 
-  if ("categories" in candidate && Array.isArray(candidate.categories)) {
-    return candidate.categories
-      .map(mapCategory)
-      .filter((value): value is Category => value !== null);
-  }
-
-  if ("data" in candidate && Array.isArray(candidate.data)) {
-    return candidate.data
-      .map(mapCategory)
-      .filter((value): value is Category => value !== null);
-  }
-
-  if (
-    "data" in candidate &&
-    candidate.data &&
-    !Array.isArray(candidate.data) &&
-    Array.isArray(candidate.data.categories)
-  ) {
-    return candidate.data.categories
-      .map(mapCategory)
-      .filter((value): value is Category => value !== null);
-  }
-
-  return [];
+  return merged;
 };
 
 export async function getProductsSSR(params?: {
@@ -516,21 +560,15 @@ export async function getCategories(): Promise<Category[]> {
   categoriesInFlight = (async () => {
     try {
       const serverApi = await createApiServer({ logErrors: false });
+      let megaMenuCategories: Category[] = [];
+      let legacyCategories: Category[] = [];
 
       // Preferred endpoint for direct mega-menu shape: category -> groups -> links.
       try {
         const megaMenuResponse = await serverApi.get<unknown>(
           "api/categories/mega-menu"
         );
-        const normalizedMegaMenu = normalizeCategories(megaMenuResponse.data);
-
-        if (normalizedMegaMenu.length > 0) {
-          categoriesCache = {
-            value: normalizedMegaMenu,
-            expiresAt: Date.now() + CATEGORIES_CACHE_TTL_MS,
-          };
-          return normalizedMegaMenu;
-        }
+        megaMenuCategories = normalizeCategories(megaMenuResponse.data);
       } catch (error) {
         // If backend is rate-limiting categories, avoid firing a second
         // immediate request to the legacy endpoint.
@@ -546,7 +584,8 @@ export async function getCategories(): Promise<Category[]> {
         ApiResponse<CategoriesData> | CategoriesData | Category[]
       >("api/categories");
 
-      const normalized = normalizeCategories(legacyResponse.data);
+      legacyCategories = normalizeCategories(legacyResponse.data);
+      const normalized = mergeCategories(megaMenuCategories, legacyCategories);
       categoriesCache = {
         value: normalized,
         expiresAt: Date.now() + CATEGORIES_CACHE_TTL_MS,
