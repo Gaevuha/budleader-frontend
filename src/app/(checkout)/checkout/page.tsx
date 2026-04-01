@@ -2,18 +2,21 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { Container } from "@/components/layout/Container/Container";
 import { AuthModal } from "@/components/UI/AuthModal/AuthModal";
 import { Button } from "@/components/UI/Button/Button";
-import { useCartQuery } from "@/queries/cartQueries";
-import { createOrderCSR } from "@/services/apiClient";
+import { CART_QUERY_KEY, useCartQuery } from "@/queries/cartQueries";
+import { clearCartCSR, createOrderCSR } from "@/services/apiClient";
 import { useAuthStore } from "@/store/auth/authStore";
+import { useCartStore } from "@/store/cart/cartStore";
 import styles from "./Checkout.module.css";
 
 export default function CheckoutPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [fullName, setFullName] = useState("");
@@ -22,6 +25,7 @@ export default function CheckoutPage() {
   const [addressLine1, setAddressLine1] = useState("");
 
   const accessToken = useAuthStore((state) => state.accessToken);
+  const clearLocalCart = useCartStore((state) => state.clearCart);
   const isAuthenticated = Boolean(accessToken);
   const cartQuery = useCartQuery(isAuthenticated);
 
@@ -66,20 +70,66 @@ export default function CheckoutPage() {
           quantity: item.quantity,
         })),
         shippingAddress: {
-          fullName: fullName.trim(),
+          name: fullName.trim(),
           phone: phone.trim(),
-          country: "Україна",
           city: city.trim(),
-          addressLine1: addressLine1.trim(),
+          street: addressLine1.trim(),
+          building: "1",
         },
-        paymentMethod: "cash_on_delivery",
-        deliveryMethod: "nova_poshta",
+        paymentMethod: "cash",
+        deliveryMethod: "post",
+      });
+
+      try {
+        await clearCartCSR();
+      } catch {
+        // Do not fail completed order if cart cleanup request is temporarily unavailable.
+      }
+
+      clearLocalCart();
+      queryClient.setQueryData(CART_QUERY_KEY, {
+        items: [],
+        subtotal: 0,
+        itemsCount: 0,
       });
 
       toast.success("Замовлення успішно створено");
       router.push("/success");
-    } catch {
-      toast.error("Не вдалося оформити замовлення");
+    } catch (error) {
+      const backendMessage =
+        typeof error === "object" &&
+        error &&
+        "response" in error &&
+        typeof (
+          error as {
+            response?: {
+              data?: {
+                error?: { message?: string };
+                message?: string;
+              };
+            };
+          }
+        ).response?.data?.error?.message === "string"
+          ? (
+              error as {
+                response?: {
+                  data?: { error?: { message?: string } };
+                };
+              }
+            ).response?.data?.error?.message
+          : typeof (
+              error as {
+                response?: { data?: { message?: string } };
+              }
+            ).response?.data?.message === "string"
+          ? (
+              error as {
+                response?: { data?: { message?: string } };
+              }
+            ).response?.data?.message
+          : null;
+
+      toast.error(backendMessage ?? "Не вдалося оформити замовлення");
     } finally {
       setIsSubmitting(false);
     }

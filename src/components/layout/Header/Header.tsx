@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Container } from "../Container/Container";
 import {
   ShoppingCart,
@@ -30,7 +30,6 @@ interface HeaderProps {
 
 export const Header = ({ categories }: HeaderProps) => {
   const router = useRouter();
-  const pathname = usePathname();
   const currentUser = useAuthStore((state) => state.user);
   const logout = useAuthStore((state) => state.logout);
   const theme = useUIStore((state) => state.theme);
@@ -41,7 +40,6 @@ export const Header = ({ categories }: HeaderProps) => {
   const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchDirty, setIsSearchDirty] = useState(false);
-  const lastSearchNavigationRef = useRef<string>("");
 
   const handleThemeToggle = () => {
     toggleTheme();
@@ -59,31 +57,17 @@ export const Header = ({ categories }: HeaderProps) => {
     const timeoutId = window.setTimeout(() => {
       const normalized = searchQuery.trim();
 
-      if (pathname === "/catalog") {
-        window.dispatchEvent(
-          new CustomEvent<string>("catalog-search-change", {
-            detail: normalized,
-          })
-        );
-        return;
-      }
-
       const nextTarget = normalized
         ? `/catalog?search=${encodeURIComponent(normalized)}`
         : "/catalog";
 
-      if (lastSearchNavigationRef.current === nextTarget) {
-        return;
-      }
-
-      lastSearchNavigationRef.current = nextTarget;
       router.replace(nextTarget);
-    }, 350);
+    }, 300);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [isSearchDirty, pathname, router, searchQuery]);
+  }, [isSearchDirty, router, searchQuery]);
 
   const displayName =
     currentUser?.firstName ?? currentUser?.email ?? "Користувач";

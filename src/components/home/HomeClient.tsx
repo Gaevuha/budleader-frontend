@@ -126,7 +126,7 @@ export function HomeClient({
   initialProducts,
 }: HomeClientProps) {
   const [isCatalogExpanded, setIsCatalogExpanded] = useState(false);
-  const collapsedCategoryCount = 14;
+  const collapsedCategoryCount = 15;
   const [activeCategoryId, setActiveCategoryId] = useState<string>("");
   const [loadingCategoryId, setLoadingCategoryId] = useState<string | null>(
     null

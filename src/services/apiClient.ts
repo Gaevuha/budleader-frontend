@@ -719,7 +719,61 @@ export async function removeFromWishlistCSR(
 export async function createOrderCSR(
   payload: CreateOrderPayload
 ): Promise<OrderResult> {
-  const response = await apiClient.post("/api/orders", payload);
+  const rawPayload = payload as CreateOrderPayload & {
+    paymentMethod?: string;
+    deliveryMethod?: string;
+    shippingAddress?: {
+      name?: string;
+      fullName?: string;
+      phone?: string;
+      city?: string;
+      street?: string;
+      building?: string;
+      apartment?: string;
+      comment?: string;
+      addressLine1?: string;
+      addressLine2?: string;
+    };
+  };
+
+  const address = rawPayload.shippingAddress ?? {};
+  const rawPaymentMethod = (rawPayload.paymentMethod ?? "") as string;
+  const rawDeliveryMethod = (rawPayload.deliveryMethod ?? "") as string;
+
+  const normalizedPaymentMethod =
+    rawPaymentMethod === "cash_on_delivery"
+      ? "cash"
+      : rawPaymentMethod === "card" ||
+        rawPaymentMethod === "cash" ||
+        rawPaymentMethod === "online"
+      ? rawPaymentMethod
+      : "cash";
+
+  const normalizedDeliveryMethod =
+    rawDeliveryMethod === "nova_poshta"
+      ? "post"
+      : rawDeliveryMethod === "courier" ||
+        rawDeliveryMethod === "pickup" ||
+        rawDeliveryMethod === "post"
+      ? rawDeliveryMethod
+      : "courier";
+
+  const normalizedPayload = {
+    items: payload.items,
+    shippingAddress: {
+      name: (address.name ?? address.fullName ?? "").trim(),
+      phone: (address.phone ?? "").trim(),
+      city: (address.city ?? "").trim(),
+      street: (address.street ?? address.addressLine1 ?? "").trim(),
+      building: (address.building ?? address.addressLine2 ?? "1").trim(),
+      ...(address.apartment ? { apartment: address.apartment.trim() } : {}),
+      ...(address.comment ? { comment: address.comment.trim() } : {}),
+    },
+    paymentMethod: normalizedPaymentMethod,
+    deliveryMethod: normalizedDeliveryMethod,
+  };
+
+  const response = await apiClient.post("/api/orders", normalizedPayload);
   return normalizeOrderPayload(response.data);
 }
 

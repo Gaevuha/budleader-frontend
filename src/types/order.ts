@@ -4,20 +4,23 @@ export interface OrderItemPayload {
 }
 
 export interface ShippingAddress {
-  fullName: string;
+  name: string;
   phone: string;
-  country: string;
   city: string;
-  addressLine1: string;
-  addressLine2?: string;
-  postalCode?: string;
+  street: string;
+  building: string;
+  apartment?: string;
+  comment?: string;
 }
+
+export type PaymentMethod = "cash" | "card" | "online";
+export type DeliveryMethod = "courier" | "pickup" | "post";
 
 export interface CreateOrderPayload {
   items: OrderItemPayload[];
   shippingAddress: ShippingAddress;
-  paymentMethod: string;
-  deliveryMethod: string;
+  paymentMethod: PaymentMethod;
+  deliveryMethod: DeliveryMethod;
 }
 
 export interface Order {

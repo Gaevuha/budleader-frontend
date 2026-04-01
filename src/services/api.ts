@@ -131,43 +131,59 @@ export const mapApiProductToAppProduct = (
   };
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+};
+
+const findProductArray = (payload: unknown, depth = 0): unknown[] => {
+  if (Array.isArray(payload)) {
+    return payload;
+  }
+
+  if (!isRecord(payload) || depth > 5) {
+    return [];
+  }
+
+  if (Array.isArray(payload.products)) {
+    return payload.products;
+  }
+
+  if (Array.isArray(payload.items)) {
+    return payload.items;
+  }
+
+  for (const key of ["data", "result", "payload"]) {
+    if (key in payload) {
+      const nested = findProductArray(payload[key], depth + 1);
+      if (nested.length > 0) {
+        return nested;
+      }
+    }
+  }
+
+  return [];
+};
+
 export const extractApiProducts = (payload: unknown): unknown[] => {
   if (!payload) {
     return [];
   }
 
-  if (Array.isArray(payload)) {
-    return payload;
+  const rows = findProductArray(payload);
+  if (rows.length > 0) {
+    return rows;
   }
 
-  if (typeof payload !== "object") {
+  if (!isRecord(payload)) {
     return [];
   }
 
-  const candidate = payload as {
-    products?: unknown[];
-    product?: unknown;
-    data?: unknown;
-  };
-
-  if (Array.isArray(candidate.products)) {
-    return candidate.products;
+  if (payload.product && typeof payload.product === "object") {
+    return [payload.product];
   }
 
-  if (Array.isArray(candidate.data)) {
-    return candidate.data;
-  }
-
-  if (
-    candidate.data &&
-    typeof candidate.data === "object" &&
-    Array.isArray((candidate.data as { products?: unknown[] }).products)
-  ) {
-    return (candidate.data as { products?: unknown[] }).products ?? [];
-  }
-
-  if (candidate.product && typeof candidate.product === "object") {
-    return [candidate.product];
+  if (isRecord(payload.data) && payload.data.product) {
+    return [payload.data.product];
   }
 
   return [];
