@@ -28,34 +28,36 @@ const normalizeCategories = (raw: unknown): Category[] => {
     ? nestedData
     : [];
 
-  return rows
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
+  const normalizedRows: Category[] = [];
 
-      const record = item as {
-        id?: string;
-        _id?: string;
-        name?: string;
-        slug?: string;
-        productCount?: number;
-        productsCount?: number;
-      };
+  for (const item of rows) {
+    if (!item || typeof item !== "object") {
+      continue;
+    }
 
-      const id = record.id ?? record._id;
-      if (!id || !record.name) {
-        return null;
-      }
+    const record = item as {
+      id?: string;
+      _id?: string;
+      name?: string;
+      slug?: string;
+      productCount?: number;
+      productsCount?: number;
+    };
 
-      return {
-        id,
-        name: record.name,
-        slug: record.slug,
-        productsCount: record.productsCount ?? record.productCount ?? 0,
-      } satisfies Category;
-    })
-    .filter((item): item is Category => item !== null);
+    const id = record.id ?? record._id;
+    if (!id || !record.name) {
+      continue;
+    }
+
+    normalizedRows.push({
+      id,
+      name: record.name,
+      slug: record.slug,
+      productsCount: record.productsCount ?? record.productCount ?? 0,
+    });
+  }
+
+  return normalizedRows;
 };
 
 export default function CategoriesPage() {

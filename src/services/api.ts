@@ -7,16 +7,9 @@ import axios, {
 } from "axios";
 
 import type { ApiResponse } from "@/types/api";
-import type { RefreshTokenData } from "@/types/auth";
 import type { AppProduct } from "@/types/app";
 import type { Product } from "@/types/product";
 import { PRODUCT_PLACEHOLDER_SRC, resolveMediaUrl } from "@/utils/media";
-import {
-  clearAccessToken,
-  clearRole,
-  getAccessToken,
-  setAccessToken,
-} from "@/utils/token";
 
 const normalizeApiBaseUrl = (rawUrl: string): string => {
   const trimmed = rawUrl.replace(/\/+$/, "");
@@ -27,10 +20,28 @@ export const API_BASE_URL = normalizeApiBaseUrl(
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 );
 export const API_TIMEOUT_MS = 15_000;
+export const API_PROXY_PREFIX = "/api/proxy";
+export const AUTH_PROXY_BASE = `${API_PROXY_PREFIX}/api/auth`;
 const REFRESH_ENDPOINT = "/api/auth/refresh";
+const AUTH_ENDPOINT_PREFIX = "/api/auth";
 const CATALOG_BACKOFF_MS = 15_000;
 const CATEGORIES_CACHE_TTL_MS = 5 * 60_000;
 const PRODUCTS_CACHE_TTL_MS = 30_000;
+
+let refreshPromise: Promise<void> | null = null;
+let axiosRefreshPromise: Promise<void> | null = null;
+
+export class ApiFetchError extends Error {
+  status: number;
+  data: unknown;
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message);
+    this.name = "ApiFetchError";
+    this.status = status;
+    this.data = data;
+  }
+}
 
 type ApiProductCandidate = Product & {
   _id?: string;
@@ -135,6 +146,195 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 };
 
+const parseResponseBody = async (response: Response): Promise<unknown> => {
+  if (response.status === 204) {
+    return null;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+};
+
+const extractApiMessage = (payload: unknown): string | null => {
+  if (typeof payload === "string" && payload.trim()) {
+    return payload.trim();
+  }
+
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const nestedError = payload.error;
+  if (isRecord(nestedError) && typeof nestedError.message === "string") {
+    return nestedError.message;
+  }
+
+  if (typeof payload.message === "string") {
+    return payload.message;
+  }
+
+  return null;
+};
+
+export const getApiErrorMessage = (
+  error: unknown,
+  fallback = "Сталася помилка запиту"
+): string => {
+  if (error instanceof ApiFetchError) {
+    return extractApiMessage(error.data) ?? error.message ?? fallback;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (isRecord(error) && "response" in error) {
+    const response = error.response;
+    if (isRecord(response) && "data" in response) {
+      return extractApiMessage(response.data) ?? fallback;
+    }
+  }
+
+  return fallback;
+};
+
+const unwrapApiData = <T>(payload: unknown): T => {
+  if (isRecord(payload) && "data" in payload) {
+    return payload.data as T;
+  }
+
+  return payload as T;
+};
+
+const buildFetchBody = (
+  body: BodyInit | object | null | undefined,
+  headers: Headers
+): BodyInit | undefined => {
+  if (body == null) {
+    return undefined;
+  }
+
+  if (
+    typeof body === "string" ||
+    body instanceof FormData ||
+    body instanceof URLSearchParams ||
+    body instanceof Blob ||
+    body instanceof ArrayBuffer ||
+    ArrayBuffer.isView(body)
+  ) {
+    return body as BodyInit;
+  }
+
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  return JSON.stringify(body);
+};
+
+const refreshAuthSession = async (): Promise<void> => {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const response = await fetch(`${AUTH_PROXY_BASE}/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const payload = await parseResponseBody(response);
+        throw new ApiFetchError(
+          extractApiMessage(payload) ?? "Не вдалося оновити сесію",
+          response.status,
+          payload
+        );
+      }
+
+      await parseResponseBody(response);
+    })().finally(() => {
+      refreshPromise = null;
+    });
+  }
+
+  return refreshPromise;
+};
+
+const refreshAxiosSession = async (): Promise<void> => {
+  if (!axiosRefreshPromise) {
+    axiosRefreshPromise = axios
+      .post(`${API_BASE_URL}${REFRESH_ENDPOINT}`, {}, { withCredentials: true })
+      .then(() => undefined)
+      .finally(() => {
+        axiosRefreshPromise = null;
+      });
+  }
+
+  return axiosRefreshPromise;
+};
+
+interface ApiFetchOptions extends Omit<RequestInit, "body"> {
+  body?: BodyInit | object | null;
+  retryOn401?: boolean;
+}
+
+export async function apiFetch<T>(
+  input: string,
+  options: ApiFetchOptions = {}
+): Promise<T> {
+  const { retryOn401 = true, body, headers: rawHeaders, ...rest } = options;
+  const headers = new Headers(rawHeaders);
+
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+
+  const response = await fetch(input, {
+    ...rest,
+    credentials: "include",
+    headers,
+    body: buildFetchBody(body, headers),
+    cache: rest.cache ?? "no-store",
+  });
+
+  const payload = await parseResponseBody(response);
+
+  if (
+    response.status === 401 &&
+    retryOn401 &&
+    !input.includes("/auth/refresh")
+  ) {
+    await refreshAuthSession();
+
+    return apiFetch<T>(input, {
+      ...options,
+      retryOn401: false,
+    });
+  }
+
+  if (!response.ok) {
+    throw new ApiFetchError(
+      extractApiMessage(payload) ??
+        `Request failed with status ${response.status}`,
+      response.status,
+      payload
+    );
+  }
+
+  return unwrapApiData<T>(payload);
+}
+
 const findProductArray = (payload: unknown, depth = 0): unknown[] => {
   if (Array.isArray(payload)) {
     return payload;
@@ -222,6 +422,12 @@ const toPathname = (url: string | undefined): string => {
 
 const isPublicEndpointPath = (path: string): boolean => {
   return path === "/api/categories" || path === "/api/products";
+};
+
+const isAuthEndpointPath = (path: string): boolean => {
+  return (
+    path === AUTH_ENDPOINT_PREFIX || path.startsWith(`${AUTH_ENDPOINT_PREFIX}/`)
+  );
 };
 
 const shouldProtectCatalogGet = (
@@ -323,17 +529,9 @@ export const api: AxiosInstance = axios.create({
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const path = toPathname(config.url);
-  const token = getAccessToken();
 
-  // Public catalog endpoints should not receive a stale bearer token.
-  if (isPublicEndpointPath(path)) {
-    if (config.headers.Authorization) {
-      delete config.headers.Authorization;
-    }
-  }
-
-  if (token && !config.headers.Authorization && !isPublicEndpointPath(path)) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (isPublicEndpointPath(path) && config.headers.Authorization) {
+    delete config.headers.Authorization;
   }
 
   if (!shouldProtectCatalogGet(config)) {
@@ -420,7 +618,8 @@ api.interceptors.response.use(
       !originalRequest ||
       originalRequest._retry ||
       originalRequest.url?.includes(REFRESH_ENDPOINT) ||
-      isPublicEndpointPath(requestPath)
+      isPublicEndpointPath(requestPath) ||
+      isAuthEndpointPath(requestPath)
     ) {
       return Promise.reject(error);
     }
@@ -428,29 +627,10 @@ api.interceptors.response.use(
     originalRequest._retry = true;
 
     try {
-      const refreshResponse = await axios.post<ApiResponse<RefreshTokenData>>(
-        `${API_BASE_URL}${REFRESH_ENDPOINT}`,
-        {},
-        { withCredentials: true }
-      );
+      await refreshAxiosSession();
 
-      const tokenCandidate =
-        refreshResponse.data?.data?.accessToken ??
-        refreshResponse.data?.data?.token;
-      const newAccessToken =
-        typeof tokenCandidate === "string" ? tokenCandidate.trim() : "";
-
-      if (!newAccessToken) {
-        throw new Error("Не вдалося оновити токен сесії");
-      }
-
-      setAccessToken(newAccessToken);
-
-      originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
       return api(originalRequest);
     } catch (refreshError) {
-      clearAccessToken();
-      clearRole();
       return Promise.reject(refreshError);
     }
   }

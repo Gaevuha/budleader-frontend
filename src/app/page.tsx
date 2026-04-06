@@ -32,32 +32,32 @@ const loadHomeProducts = async () => {
 
 const makeFallbackCategories = (products: AppProduct[]): Category[] => {
   const seen = new Set<string>();
+  const categories: Category[] = [];
 
-  return products
-    .map((product) => {
-      const name = (product.category ?? "").trim();
-      if (!name) {
-        return null;
-      }
+  for (const product of products) {
+    const name = (product.category ?? "").trim();
+    if (!name) {
+      continue;
+    }
 
-      const id = (product.categoryId ?? name.toLowerCase())
-        .trim()
-        .replace(/\s+/g, "-");
+    const id = (product.categoryId ?? name.toLowerCase())
+      .trim()
+      .replace(/\s+/g, "-");
 
-      const dedupeKey = `${id}::${name}`;
-      if (!id || seen.has(dedupeKey)) {
-        return null;
-      }
+    const dedupeKey = `${id}::${name}`;
+    if (!id || seen.has(dedupeKey)) {
+      continue;
+    }
 
-      seen.add(dedupeKey);
+    seen.add(dedupeKey);
+    categories.push({
+      id,
+      name,
+      subcategories: [],
+    });
+  }
 
-      return {
-        id,
-        name,
-        subcategories: [],
-      } satisfies Category;
-    })
-    .filter((item): item is Category => item !== null);
+  return categories;
 };
 
 const staticHomeCategories: Category[] = [

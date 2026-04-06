@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -8,7 +8,7 @@ import { useQueryClient } from "@tanstack/react-query";
 
 import { Container } from "@/components/layout/Container/Container";
 import { Button } from "@/components/UI/Button/Button";
-import { AuthModal } from "@/components/UI/AuthModal/AuthModal";
+import { useUser } from "@/queries/authQueries";
 import {
   CART_QUERY_KEY,
   useAddToCartMutation,
@@ -16,7 +16,6 @@ import {
   useClearCartMutation,
   useRemoveFromCartMutation,
 } from "@/queries/cartQueries";
-import { useAuthStore } from "@/store/auth/authStore";
 import { useCartStore } from "@/store/cart/cartStore";
 import type { CartData } from "@/types/cart";
 import styles from "./Cart.module.css";
@@ -49,10 +48,9 @@ const toCartData = (items: CartData["items"]): CartData => {
 export default function CartPage() {
   const router = useRouter();
   const queryClient = useQueryClient();
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
 
-  const accessToken = useAuthStore((state) => state.accessToken);
-  const isAuthenticated = Boolean(accessToken);
+  const { data: currentUser } = useUser();
+  const isAuthenticated = Boolean(currentUser);
 
   const localCart = useCartStore((state) => state.cart);
   const removeLocal = useCartStore((state) => state.removeFromCart);
@@ -244,11 +242,6 @@ export default function CartPage() {
   };
 
   const handleCheckout = () => {
-    if (!isAuthenticated) {
-      setIsAuthOpen(true);
-      return;
-    }
-
     router.push("/checkout");
   };
 
@@ -286,8 +279,6 @@ export default function CartPage() {
             Перейти до каталогу
           </Link>
         </div>
-
-        <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
       </Container>
     );
   }
@@ -373,14 +364,18 @@ export default function CartPage() {
           >
             Оформити замовлення
           </Button>
+          {!isAuthenticated ? (
+            <p>
+              Щоб підтвердити замовлення на наступному кроці, потрібно увійти в
+              акаунт.
+            </p>
+          ) : null}
 
           <Button variant="secondary" size="lg" onClick={handleClear}>
             Очистити кошик
           </Button>
         </div>
       </div>
-
-      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
     </Container>
   );
 }

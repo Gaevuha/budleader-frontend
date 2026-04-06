@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { ShoppingCart, Heart, Check, Star } from "lucide-react";
@@ -11,7 +11,7 @@ import { PRODUCT_PLACEHOLDER_SRC } from "@/utils/media";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { toFiniteNumber } from "@/services/api";
-import { useAuthStore } from "@/store/auth/authStore";
+import { useUser } from "@/queries/authQueries";
 import {
   useAddToCartMutation,
   useCartQuery,
@@ -33,8 +33,8 @@ export const ProductCard = ({
   product,
   viewMode = "grid",
 }: ProductCardProps) => {
-  const accessToken = useAuthStore((state) => state.accessToken);
-  const isAuthenticated = Boolean(accessToken);
+  const { data: currentUser } = useUser();
+  const isAuthenticated = Boolean(currentUser);
   const localCart = useCartStore((state) => state.cart);
   const addToCartLocal = useCartStore((state) => state.addToCart);
   const removeFromCartLocal = useCartStore((state) => state.removeFromCart);
@@ -77,13 +77,14 @@ export const ProductCard = ({
         (item) => item.productId === product.id || item.id === product.id
       )
     : localCart.some((item) => item.id === product.id);
-  const isWishlistedUi = optimisticWishlisted ?? isWishlisted;
-  const isInCartUi = optimisticInCart ?? isInCart;
-  const articleDigits = (product.id ?? "").replace(/\D/g, "");
-  const articleCode =
-    articleDigits.length > 0
-      ? articleDigits.slice(0, 6)
-      : (product.id ?? "").slice(0, 6);
+  const isWishlistedUi =
+    optimisticWishlisted === null || optimisticWishlisted === isWishlisted
+      ? isWishlisted
+      : optimisticWishlisted;
+  const isInCartUi =
+    optimisticInCart === null || optimisticInCart === isInCart
+      ? isInCart
+      : optimisticInCart;
   const ratingSource = product as AppProduct & {
     averageRating?: unknown;
     avgRating?: unknown;
@@ -104,14 +105,6 @@ export const ProductCard = ({
   const discount = product.oldPrice
     ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
     : 0;
-
-  useEffect(() => {
-    setOptimisticInCart(null);
-  }, [isInCart]);
-
-  useEffect(() => {
-    setOptimisticWishlisted(null);
-  }, [isWishlisted]);
 
   const handleAddToCart = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -213,7 +206,6 @@ export const ProductCard = ({
             </Link>
             <div className={styles.listBrand}>Бренд: {product.brand}</div>
             <div className={styles.listMeta}>Категорія: {product.category}</div>
-            <div className={styles.listMeta}>Арт: {articleCode}</div>
             <div className={styles.listRatingWrap}>
               <div className={styles.ratingStars}>
                 <div className={styles.ratingStarsBase}>
@@ -323,7 +315,6 @@ export const ProductCard = ({
             ) : (
               <span className={styles.outOfStock}>Очікується</span>
             )}
-            <span className={styles.sku}>Арт: {articleCode}</span>
           </div>
 
           <h3 className={styles.title}>{product.name}</h3>

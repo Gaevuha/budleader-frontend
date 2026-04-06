@@ -2,33 +2,41 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import {
+  QueryClient,
+  QueryClientProvider,
+  useQueryClient,
+} from "@tanstack/react-query";
 
+import { USER_QUERY_KEY } from "@/queries/authQueries";
 import {
   addToCartCSR,
   addToWishlistCSR,
   getCartCSR,
   getWishlistCSR,
 } from "@/services/apiClient";
+import {
+  type AuthBroadcastEvent,
+  createAuthBroadcastChannel,
+} from "@/services/authBroadcast";
 import { useCartQuery } from "@/queries/cartQueries";
+import { useUser } from "@/queries/authQueries";
 import { useWishlistQuery } from "@/queries/wishlistQueries";
 import { mapApiProductToAppProduct } from "@/services/api";
-import { useAuthStore } from "@/store/auth/authStore";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
+import { CART_QUERY_KEY } from "@/queries/cartQueries";
+import { WISHLIST_QUERY_KEY } from "@/queries/wishlistQueries";
 
 interface ProvidersProps {
   children: ReactNode;
 }
 
-let bootstrapStarted = false;
-
 function AppBootstrap() {
-  const user = useAuthStore((state) => state.user);
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const accessToken = useAuthStore((state) => state.accessToken);
-  const initializeAuth = useAuthStore((state) => state.initializeAuth);
-  const fetchMe = useAuthStore((state) => state.fetchMe);
+  const queryClient = useQueryClient();
+  const userQuery = useUser();
+  const user = userQuery.data;
+  const isAuthenticated = Boolean(user);
   const localCart = useCartStore((state) => state.cart);
   const setCart = useCartStore((state) => state.setCart);
   const clearCart = useCartStore((state) => state.clearCart);
@@ -41,38 +49,42 @@ function AppBootstrap() {
   const wishlistQuery = useWishlistQuery(isAuthenticated);
 
   useEffect(() => {
-    if (bootstrapStarted) {
+    const channel = createAuthBroadcastChannel();
+
+    if (!channel) {
       return;
     }
 
-    bootstrapStarted = true;
+    const handleMessage = (event: MessageEvent<AuthBroadcastEvent>) => {
+      const payload = event.data;
 
-    const init = async () => {
-      try {
-        await initializeAuth();
-      } catch {
-        // User is not authenticated or session is expired.
+      if (!payload || typeof payload !== "object") {
+        return;
       }
+
+      if (payload.type === "logout" || payload.type === "logout-all") {
+        queryClient.setQueryData(USER_QUERY_KEY, null);
+        queryClient.removeQueries({ queryKey: CART_QUERY_KEY });
+        queryClient.removeQueries({ queryKey: WISHLIST_QUERY_KEY });
+        clearCart();
+        clearWishlist();
+        syncedUserIdRef.current = null;
+        wasAuthenticatedRef.current = false;
+        return;
+      }
+
+      void queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+      void queryClient.invalidateQueries({ queryKey: WISHLIST_QUERY_KEY });
     };
 
-    void init();
-  }, [initializeAuth]);
+    channel.addEventListener("message", handleMessage);
 
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
-
-    // initializeAuth already performs the initial me() call, so this effect is
-    // only a safe fallback when user data is still missing.
-    if (user?.id) {
-      return;
-    }
-
-    void fetchMe().catch(() => {
-      // Session errors are handled in authStore; avoid unhandled runtime errors.
-    });
-  }, [accessToken, fetchMe, user?.id]);
+    return () => {
+      channel.removeEventListener("message", handleMessage);
+      channel.close();
+    };
+  }, [clearCart, clearWishlist, queryClient]);
 
   useEffect(() => {
     if (!isAuthenticated || !user?.id) {

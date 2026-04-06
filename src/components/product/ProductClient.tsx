@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { Heart, Send, ShoppingCart, Star } from "lucide-react";
@@ -15,7 +16,7 @@ import { submitProductReviewCSR } from "@/services/apiClient";
 import { mapApiProductToAppProduct } from "@/services/api";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
-import { useAuthStore } from "@/store/auth/authStore";
+import { useUser } from "@/queries/authQueries";
 import {
   useAddToCartMutation,
   useCartQuery,
@@ -26,6 +27,10 @@ import {
   useRemoveFromWishlistMutation,
   useWishlistQuery,
 } from "@/queries/wishlistQueries";
+import {
+  productReviewsQueryKey,
+  useProductReviewsQuery,
+} from "@/queries/reviewQueries";
 
 interface ProductClientProps {
   product: Product;
@@ -36,6 +41,7 @@ type RawProduct = Product & {
 };
 
 export function ProductClient({ product }: ProductClientProps) {
+  const queryClient = useQueryClient();
   const localCart = useCartStore((state) => state.cart);
   const addToCartLocal = useCartStore((state) => state.addToCart);
   const removeFromCartLocal = useCartStore((state) => state.removeFromCart);
@@ -45,9 +51,8 @@ export function ProductClient({ product }: ProductClientProps) {
   const removeFromCartMutation = useRemoveFromCartMutation();
   const addToWishlistMutation = useAddToWishlistMutation();
   const removeFromWishlistMutation = useRemoveFromWishlistMutation();
-  const currentUser = useAuthStore((state) => state.user);
-  const accessToken = useAuthStore((state) => state.accessToken);
-  const isAuthenticated = Boolean(accessToken);
+  const { data: currentUser } = useUser();
+  const isAuthenticated = Boolean(currentUser);
   const cartQuery = useCartQuery(isAuthenticated);
   const wishlistQuery = useWishlistQuery(isAuthenticated);
   const [optimisticInCart, setOptimisticInCart] = useState<boolean | null>(
@@ -58,11 +63,9 @@ export function ProductClient({ product }: ProductClientProps) {
   >(null);
 
   const [reviewText, setReviewText] = useState("");
+  const [guestName, setGuestName] = useState("");
   const [selectedRating, setSelectedRating] = useState(5);
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
-  const [reviews, setReviews] = useState<ProductReview[]>(
-    (product as RawProduct).reviews ?? []
-  );
   const [imageFailed, setImageFailed] = useState(false);
 
   const appProduct = useMemo(() => {
@@ -99,6 +102,29 @@ export function ProductClient({ product }: ProductClientProps) {
   const isWishlistedUi = optimisticWishlisted ?? isWishlisted;
   const isInCartUi = optimisticInCart ?? isInCart;
   const imageSrc = imageFailed ? PRODUCT_PLACEHOLDER_SRC : appProduct.image;
+  const initialReviews = (product as RawProduct).reviews ?? [];
+  const initialAverageRating =
+    typeof appProduct.rating === "number" && Number.isFinite(appProduct.rating)
+      ? appProduct.rating
+      : 0;
+  const initialTotalReviews =
+    typeof appProduct.reviewsCount === "number" &&
+    Number.isFinite(appProduct.reviewsCount)
+      ? appProduct.reviewsCount
+      : initialReviews.length;
+  const reviewsQuery = useProductReviewsQuery(appProduct.id, {
+    reviews: initialReviews,
+    averageRating: initialAverageRating,
+    totalReviews: initialTotalReviews,
+  });
+  const reviewsData = reviewsQuery.data ?? {
+    reviews: initialReviews,
+    averageRating: initialAverageRating,
+    totalReviews: initialTotalReviews,
+  };
+  const reviews = reviewsData.reviews;
+  const overallRating = Math.max(0, Math.min(5, reviewsData.averageRating));
+  const totalReviews = Math.max(0, reviewsData.totalReviews);
 
   useEffect(() => {
     setOptimisticInCart(null);
@@ -178,35 +204,38 @@ export function ProductClient({ product }: ProductClientProps) {
   ) => {
     event.preventDefault();
 
-    if (!currentUser) {
-      toast.error("Щоб залишити відгук, увійдіть у акаунт");
+    const trimmedText = reviewText.trim();
+    const trimmedGuestName = guestName.trim();
+
+    if (!currentUser && trimmedGuestName.length < 2) {
+      toast.error("Для гостьового відгуку вкажіть ваше ім'я");
       return;
     }
 
-    const trimmedText = reviewText.trim();
+    if (trimmedText.length < 10) {
+      toast.error("Відгук має містити щонайменше 10 символів");
+      return;
+    }
 
     setIsSubmittingReview(true);
 
     try {
-      const persistedReview = await submitProductReviewCSR({
+      await submitProductReviewCSR({
         productId: appProduct.id,
         rating: selectedRating,
         text: trimmedText.length > 0 ? trimmedText : undefined,
+        guestName: currentUser ? undefined : trimmedGuestName,
       });
 
-      const review: ProductReview = {
-        id: persistedReview.id ?? `${Date.now()}`,
-        user:
-          persistedReview.user ?? currentUser.firstName ?? currentUser.email,
-        text: persistedReview.text ?? trimmedText,
-        date: persistedReview.date ?? new Date().toLocaleDateString("uk-UA"),
-        rating: persistedReview.rating ?? selectedRating,
-      };
-
-      setReviews((prev) => [review, ...prev]);
+      void queryClient.invalidateQueries({
+        queryKey: productReviewsQueryKey(appProduct.id),
+      });
       setReviewText("");
+      if (!currentUser) {
+        setGuestName("");
+      }
       setSelectedRating(5);
-      toast.success("Оцінку та відгук збережено");
+      toast.success("Відгук збережено");
     } catch (error) {
       const backendMessage =
         typeof error === "object" &&
@@ -292,6 +321,25 @@ export function ProductClient({ product }: ProductClientProps) {
             <span className={styles.code}>Код: {appProduct.id}</span>
           </div>
 
+          <div className={styles.ratingSummary}>
+            <div className={styles.ratingSummaryStars} aria-hidden="true">
+              {[1, 2, 3, 4, 5].map((star) => (
+                <Star
+                  key={star}
+                  size={16}
+                  fill={overallRating >= star ? "#FF9800" : "none"}
+                  color="#FF9800"
+                />
+              ))}
+            </div>
+            <span className={styles.ratingSummaryValue}>
+              {overallRating.toFixed(1)}
+            </span>
+            <span className={styles.ratingSummaryCount}>
+              {totalReviews} відгуків
+            </span>
+          </div>
+
           <div className={styles.priceBlock}>
             {appProduct.oldPrice && (
               <div className={styles.oldPrice}>{appProduct.oldPrice} грн</div>
@@ -334,7 +382,9 @@ export function ProductClient({ product }: ProductClientProps) {
         <h2 className={styles.reviewsTitle}>Відгуки</h2>
 
         <div className={styles.reviewsList}>
-          {reviews.length > 0 ? (
+          {reviewsQuery.isLoading ? (
+            <p className={styles.noReviews}>Завантаження відгуків...</p>
+          ) : reviews.length > 0 ? (
             reviews.map((review) => (
               <article key={review.id} className={styles.reviewCard}>
                 <div className={styles.reviewHeader}>
@@ -361,6 +411,21 @@ export function ProductClient({ product }: ProductClientProps) {
 
         <form className={styles.reviewForm} onSubmit={handleReviewSubmit}>
           <h3>Залишити відгук</h3>
+          <p className={styles.reviewHint}>
+            Відгуки доступні всім користувачам, а оцінка впливає на загальний
+            рейтинг товару.
+          </p>
+          {!currentUser ? (
+            <input
+              type="text"
+              value={guestName}
+              onChange={(event) => setGuestName(event.target.value)}
+              placeholder="Ваше ім'я"
+              className={styles.reviewInput}
+              minLength={2}
+              required
+            />
+          ) : null}
           <div className={styles.ratingInputBlock}>
             <span className={styles.ratingInputLabel}>Ваша оцінка:</span>
             <div className={styles.ratingInputStars}>
@@ -387,8 +452,10 @@ export function ProductClient({ product }: ProductClientProps) {
           <textarea
             value={reviewText}
             onChange={(event) => setReviewText(event.target.value)}
-            placeholder="Поділіться враженнями про товар (необов'язково)"
+            placeholder="Поділіться враженнями про товар (мінімум 10 символів)"
             rows={4}
+            minLength={10}
+            required
           />
           <button
             type="submit"

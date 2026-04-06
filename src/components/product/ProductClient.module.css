@@ -89,6 +89,31 @@
   font-size: 12px;
 }
 
+.ratingSummary {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.ratingSummaryStars {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.ratingSummaryValue {
+  font-size: 18px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.ratingSummaryCount {
+  color: #64748b;
+  font-size: 14px;
+}
+
 .priceBlock {
   margin-bottom: 14px;
 }
@@ -230,6 +255,26 @@
   font-size: 18px;
 }
 
+.reviewHint {
+  margin: 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.reviewInput,
+.reviewForm textarea {
+  width: 100%;
+  border: 1px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 10px;
+  font-family: inherit;
+}
+
+.reviewInput {
+  min-height: 44px;
+}
+
 .ratingInputBlock {
   display: flex;
   align-items: center;
@@ -277,12 +322,7 @@
 }
 
 .reviewForm textarea {
-  width: 100%;
-  border: 1px solid #cbd5e1;
-  border-radius: 8px;
-  padding: 10px;
   resize: vertical;
-  font-family: inherit;
 }
 
 .submitReviewBtn {

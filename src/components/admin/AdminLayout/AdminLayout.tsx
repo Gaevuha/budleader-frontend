@@ -15,13 +15,13 @@ import {
   MessageSquare,
   BarChart2,
 } from "lucide-react";
-import { useAuthStore } from "@/store/auth/authStore";
+import { useLogout } from "@/queries/authQueries";
 import styles from "./AdminLayout.module.css";
 
 export const AdminLayout = ({ children }: { children: ReactNode }) => {
   const location = usePathname();
   const router = useRouter();
-  const logout = useAuthStore((state) => state.logout);
+  const logoutMutation = useLogout();
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const handleLogout = async () => {
@@ -32,7 +32,7 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
     setIsLoggingOut(true);
 
     try {
-      await logout();
+      await logoutMutation.mutateAsync();
       router.push("/");
     } finally {
       setIsLoggingOut(false);

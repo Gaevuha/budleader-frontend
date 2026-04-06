@@ -16,12 +16,12 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CatalogDropdown } from "../../UI/CatalogDropdown/CatalogDropdown";
-import { AuthModal } from "@/components/UI/AuthModal/AuthModal";
+import { useLogout, useUser } from "@/queries/authQueries";
 import type { Category } from "@/types/category";
 import { useCartStore } from "@/store/cart/cartStore";
+import { useAuthModalStore } from "@/store/ui/authModalStore";
 import { useUIStore } from "@/store/ui/uiStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
-import { useAuthStore } from "@/store/auth/authStore";
 import styles from "./Header.module.css";
 
 interface HeaderProps {
@@ -30,14 +30,14 @@ interface HeaderProps {
 
 export const Header = ({ categories }: HeaderProps) => {
   const router = useRouter();
-  const currentUser = useAuthStore((state) => state.user);
-  const logout = useAuthStore((state) => state.logout);
+  const { data: currentUser } = useUser();
+  const logoutMutation = useLogout();
+  const openAuthModal = useAuthModalStore((state) => state.open);
   const theme = useUIStore((state) => state.theme);
   const toggleTheme = useUIStore((state) => state.toggleTheme);
   const cart = useCartStore((state) => state.cart);
   const wishlist = useWishlistStore((state) => state.wishlist);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
-  const [isAuthOpen, setIsAuthOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchDirty, setIsSearchDirty] = useState(false);
 
@@ -45,8 +45,17 @@ export const Header = ({ categories }: HeaderProps) => {
     toggleTheme();
   };
 
-  const handleLogout = () => {
-    void logout();
+  const handleLogout = async () => {
+    await logoutMutation.mutateAsync();
+    router.push("/");
+    router.refresh();
+  };
+
+  const handleWishlistNavigation = (
+    event: React.MouseEvent<HTMLAnchorElement>
+  ) => {
+    event.preventDefault();
+    router.push("/wishlist");
   };
 
   useEffect(() => {
@@ -71,6 +80,8 @@ export const Header = ({ categories }: HeaderProps) => {
 
   const displayName =
     currentUser?.firstName ?? currentUser?.email ?? "Користувач";
+  const profileHref =
+    currentUser?.role === "admin" ? "/admin/dashboard" : "/profile";
   const cartCount = cart.reduce((acc: number, item) => acc + item.quantity, 0);
 
   return (
@@ -103,14 +114,20 @@ export const Header = ({ categories }: HeaderProps) => {
 
             <div className={styles.topBarRight}>
               {currentUser ? (
-                <div className={styles.topBarAuth} onClick={handleLogout}>
-                  <User size={16} />
-                  <span>ВИХІД ({displayName})</span>
-                </div>
+                <>
+                  <Link href={profileHref} className={styles.topBarAuth}>
+                    <User size={16} />
+                    <span>ПРОФІЛЬ ({displayName})</span>
+                  </Link>
+                  <button className={styles.topBarAuth} onClick={handleLogout}>
+                    <User size={16} />
+                    <span>ВИХІД</span>
+                  </button>
+                </>
               ) : (
                 <button
                   className={styles.topBarAuth}
-                  onClick={() => setIsAuthOpen(true)}
+                  onClick={() => openAuthModal("login")}
                 >
                   <User size={16} />
                   <span>ВХІД</span>
@@ -164,7 +181,20 @@ export const Header = ({ categories }: HeaderProps) => {
           </div>
 
           <div className={styles.actions}>
-            <Link href="/wishlist" className={styles.actionBtn}>
+            {currentUser ? (
+              <Link href={profileHref} className={styles.actionBtn}>
+                <div className={styles.iconWrapper}>
+                  <User size={24} />
+                </div>
+                <span className={styles.actionText}>Профіль</span>
+              </Link>
+            ) : null}
+
+            <Link
+              href="/wishlist"
+              className={styles.actionBtn}
+              onClick={handleWishlistNavigation}
+            >
               <div className={styles.iconWrapper}>
                 <Heart size={24} />
                 {wishlist.length > 0 && (
@@ -230,8 +260,6 @@ export const Header = ({ categories }: HeaderProps) => {
           />
         )}
       </AnimatePresence>
-
-      <AuthModal isOpen={isAuthOpen} onClose={() => setIsAuthOpen(false)} />
     </header>
   );
 };

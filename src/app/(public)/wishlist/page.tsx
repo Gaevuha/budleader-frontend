@@ -1,22 +1,24 @@
 "use client";
 
-import { Container } from "@/components/layout/Container/Container";
-import { ProductCard } from "@/components/product/ProductCard/ProductCard";
 import Link from "next/link";
 import { Heart } from "lucide-react";
-import styles from "./Wishlist.module.css";
 import { motion } from "framer-motion";
-import { useWishlistStore } from "@/store/wishlist/wishlistStore";
+
+import { Container } from "@/components/layout/Container/Container";
+import { ProductCard } from "@/components/product/ProductCard/ProductCard";
+import { useUser } from "@/queries/authQueries";
 import { useWishlistQuery } from "@/queries/wishlistQueries";
-import { useAuthStore } from "@/store/auth/authStore";
+import { useWishlistStore } from "@/store/wishlist/wishlistStore";
+import styles from "@/app/(profile)/wishlist/Wishlist.module.css";
 
 const WishlistPage = () => {
   const localWishlist = useWishlistStore((state) => state.wishlist);
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const { data: currentUser } = useUser();
+  const isAuthenticated = Boolean(currentUser);
   const wishlistQuery = useWishlistQuery(isAuthenticated);
 
   const wishlist = isAuthenticated
-    ? (wishlistQuery.data?.items ?? [])
+    ? wishlistQuery.data?.items ?? []
     : localWishlist;
 
   return (

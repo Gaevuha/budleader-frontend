@@ -22,6 +22,8 @@ const HOP_BY_HOP_HEADERS = new Set([
   "content-length",
 ]);
 
+const COOKIE_HEADER_NAME = "set-cookie";
+
 const buildTargetUrl = (
   pathParts: string[],
   searchParams: URLSearchParams
@@ -53,16 +55,46 @@ const buildClientResponse = async (
   upstream: Response
 ): Promise<NextResponse> => {
   const headers = new Headers();
+  const upstreamHeaders = upstream.headers as Headers & {
+    getSetCookie?: () => string[];
+  };
+
+  const rewriteSetCookiePath = (value: string): string => {
+    return value.replace(
+      /(;\s*Path=)(\/api(?:\/[^;]*)?)/i,
+      (_, prefix, path) => {
+        if (typeof path !== "string" || path.startsWith("/api/proxy/")) {
+          return `${prefix}${path}`;
+        }
+
+        return `${prefix}/api/proxy${path}`;
+      }
+    );
+  };
+
+  const splitMergedSetCookie = (value: string): string[] => {
+    return value.split(/,(?=\s*[^=;,\s]+=[^;]+)/g).map((item) => item.trim());
+  };
+
+  const setCookies =
+    upstreamHeaders.getSetCookie?.() ??
+    (upstream.headers.get(COOKIE_HEADER_NAME)
+      ? splitMergedSetCookie(upstream.headers.get(COOKIE_HEADER_NAME) ?? "")
+      : []);
 
   upstream.headers.forEach((value, key) => {
     const lower = key.toLowerCase();
 
-    if (HOP_BY_HOP_HEADERS.has(lower)) {
+    if (HOP_BY_HOP_HEADERS.has(lower) || lower === COOKIE_HEADER_NAME) {
       return;
     }
 
     headers.set(key, value);
   });
+
+  for (const cookie of setCookies) {
+    headers.append(COOKIE_HEADER_NAME, rewriteSetCookiePath(cookie));
+  }
 
   const body = await upstream.arrayBuffer();
 

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 import type { AppProduct } from "@/types/app";
 
@@ -34,6 +34,7 @@ export const useWishlistStore = create<WishlistStore>()(
     }),
     {
       name: "budleader-wishlist-store",
+      storage: createJSONStorage(() => sessionStorage),
     }
   )
 );
