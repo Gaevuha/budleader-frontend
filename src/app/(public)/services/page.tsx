@@ -11,7 +11,7 @@ import {
 } from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { toast } from "@/components/UI/notifications/toast";
+import { toast } from "../../../components/UI/notifications/toast";
 
 import { Container } from "@/components/layout/Container/Container";
 import { useUser } from "@/queries/authQueries";
