@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart2, Package, ShoppingCart, Users } from "lucide-react";
 
+import { apiFetch } from "@/services/api";
 import { apiClient } from "@/services/apiClient";
 import styles from "../users/Users.module.css";
 
@@ -11,6 +12,15 @@ type SimpleOrder = {
   totalAmount: number;
   status: string;
 };
+
+type AnalyticsSnapshot = {
+  orders: SimpleOrder[];
+  usersCount: number;
+  productsCount: number;
+};
+
+let analyticsRequest: Promise<AnalyticsSnapshot> | null = null;
+let analyticsSnapshot: AnalyticsSnapshot | null = null;
 
 const normalizeOrders = (raw: unknown): SimpleOrder[] => {
   if (!raw || typeof raw !== "object") {
@@ -57,6 +67,42 @@ const normalizeOrders = (raw: unknown): SimpleOrder[] => {
     .filter((item): item is SimpleOrder => item !== null);
 };
 
+const fetchAnalyticsSnapshot = async (): Promise<AnalyticsSnapshot> => {
+  if (analyticsSnapshot) {
+    return analyticsSnapshot;
+  }
+
+  if (!analyticsRequest) {
+    analyticsRequest = Promise.all([
+      apiFetch<{ orders?: unknown[] }>("/api/admin/orders?page=1&limit=100"),
+      apiClient.get("/api/users", {
+        params: { page: 1, limit: 1, _ts: Date.now() },
+      }),
+      apiClient.get("/api/products", {
+        params: { page: 1, limit: 1, _ts: Date.now() },
+      }),
+    ])
+      .then(([ordersRes, usersRes, productsRes]) => {
+        analyticsSnapshot = {
+          orders: normalizeOrders(ordersRes),
+          usersCount:
+            (usersRes.data as { data?: { pagination?: { total?: number } } })
+              ?.data?.pagination?.total ?? 0,
+          productsCount:
+            (productsRes.data as { data?: { pagination?: { total?: number } } })
+              ?.data?.pagination?.total ?? 0,
+        };
+
+        return analyticsSnapshot;
+      })
+      .finally(() => {
+        analyticsRequest = null;
+      });
+  }
+
+  return analyticsRequest;
+};
+
 export default function AnalyticsPage() {
   const [orders, setOrders] = useState<SimpleOrder[]>([]);
   const [usersCount, setUsersCount] = useState(0);
@@ -65,29 +111,11 @@ export default function AnalyticsPage() {
   useEffect(() => {
     const loadAnalytics = async () => {
       try {
-        const [ordersRes, usersRes, productsRes] = await Promise.all([
-          apiClient.get("/api/orders/admin/all", {
-            params: { page: 1, limit: 100 },
-          }),
-          apiClient.get("/api/users", {
-            params: { page: 1, limit: 1 },
-          }),
-          apiClient.get("/api/products", {
-            params: { page: 1, limit: 1 },
-          }),
-        ]);
+        const snapshot = await fetchAnalyticsSnapshot();
 
-        setOrders(normalizeOrders(ordersRes.data));
-
-        const usersTotal =
-          (usersRes.data as { data?: { pagination?: { total?: number } } })
-            ?.data?.pagination?.total ?? 0;
-        const productsTotal =
-          (productsRes.data as { data?: { pagination?: { total?: number } } })
-            ?.data?.pagination?.total ?? 0;
-
-        setUsersCount(usersTotal);
-        setProductsCount(productsTotal);
+        setOrders(snapshot.orders);
+        setUsersCount(snapshot.usersCount);
+        setProductsCount(snapshot.productsCount);
       } catch {
         setOrders([]);
         setUsersCount(0);

@@ -1,24 +1,17 @@
-import { Container } from "@/components/layout/Container/Container";
-import { cookies } from "next/headers";
+import { OrdersPageClient } from "@/components/profile/OrdersPageClient";
+import { getUser } from "@/services/apiServer";
 import { redirect } from "next/navigation";
 
 export default async function OrdersPage() {
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get("accessToken")?.value;
-  const role = cookieStore.get("role")?.value;
+  const user = await getUser();
 
-  if (!accessToken) {
+  if (!user) {
     redirect("/login");
   }
 
-  if (role === "admin") {
+  if (user.role === "admin") {
     redirect("/admin/dashboard");
   }
 
-  return (
-    <Container>
-      <h1>Мої замовлення</h1>
-      <p>Тут відображатиметься історія ваших замовлень.</p>
-    </Container>
-  );
+  return <OrdersPageClient />;
 }

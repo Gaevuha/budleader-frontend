@@ -1,24 +1,17 @@
-import { Container } from "@/components/layout/Container/Container";
-import { cookies } from "next/headers";
+import { ProfilePageClient } from "@/components/profile/ProfilePageClient";
+import { getUser } from "@/services/apiServer";
 import { redirect } from "next/navigation";
 
 export default async function ProfilePage() {
-  const cookieStore = await cookies();
-  const accessToken = cookieStore.get("accessToken")?.value;
-  const role = cookieStore.get("role")?.value;
+  const user = await getUser();
 
-  if (!accessToken) {
+  if (!user) {
     redirect("/login");
   }
 
-  if (role === "admin") {
+  if (user.role === "admin") {
     redirect("/admin/dashboard");
   }
 
-  return (
-    <Container>
-      <h1>Профіль</h1>
-      <p>Тут відображатиметься інформація користувача.</p>
-    </Container>
-  );
+  return <ProfilePageClient initialUser={user} />;
 }

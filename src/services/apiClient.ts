@@ -1,40 +1,71 @@
 import type { AxiosInstance } from "axios";
 
-import { api } from "@/services/api";
 import {
+  api,
+  apiFetch,
+  AUTH_PROXY_BASE,
   mapApiPayloadToAppProducts,
   mapApiProductToAppProduct,
 } from "@/services/api";
 import type { ApiResponse } from "@/types/api";
 import type { Pagination } from "@/types/api";
-import type { AppProduct } from "@/types/app";
+import type { AppProduct, ProductReview } from "@/types/app";
 import type { CartData } from "@/types/cart";
-import type { CreateOrderPayload } from "@/types/order";
+import type { CreateOrderPayload, Order, OrdersResult } from "@/types/order";
 import type {
+  ChangePasswordPayload,
+  ForgotPasswordPayload,
   LoginData,
   LoginPayload,
-  RefreshTokenData,
+  RegisterData,
+  RegisterPayload,
+  ResetPasswordPayload,
+  UpdateProfilePayload,
   User,
+  ValidateSessionData,
 } from "@/types/auth";
-import {
-  clearAccessToken,
-  clearRole,
-  setAccessToken,
-  setRole,
-} from "@/utils/token";
-import { getAccessToken } from "@/utils/token";
 
 // CSR client for Client Components and TanStack Query hooks.
 export const apiClient: AxiosInstance = api;
 
-const AUTH_BASE = "/api/auth";
 const AUTH_RATE_LIMIT_BACKOFF_MS = 15_000;
 const REVIEW_RATE_LIMIT_BACKOFF_MS = 15_000;
+const REQUEST_DEDUPE_TTL_MS = 1_500;
 
-let meInFlight: Promise<User> | null = null;
-let meBackoffUntil = 0;
 let loginBackoffUntil = 0;
 let reviewBackoffUntil = 0;
+
+let currentUserRequest: Promise<User | null> | null = null;
+let currentUserSnapshot: {
+  value: User | null;
+  expiresAt: number;
+} | null = null;
+
+let cartRequest: Promise<CartData> | null = null;
+let cartSnapshot: {
+  value: CartData;
+  expiresAt: number;
+} | null = null;
+
+let wishlistRequest: Promise<WishlistResult> | null = null;
+let wishlistSnapshot: {
+  value: WishlistResult;
+  expiresAt: number;
+} | null = null;
+
+const isFreshSnapshot = (expiresAt: number) => expiresAt > Date.now();
+
+export const resetCurrentUserRequestCache = () => {
+  currentUserRequest = null;
+  currentUserSnapshot = null;
+};
+
+export const resetCommerceRequestCache = () => {
+  cartRequest = null;
+  cartSnapshot = null;
+  wishlistRequest = null;
+  wishlistSnapshot = null;
+};
 
 export interface CategoryLookupInput {
   id?: string;
@@ -245,6 +276,13 @@ export async function getCategoryProductsCSR(
   return [];
 }
 
+export async function getProductReviewsCSR(
+  productId: string
+): Promise<ProductReviewsResult> {
+  const response = await apiClient.get(`/api/reviews/products/${productId}`);
+  return normalizeProductReviewsResult(response.data);
+}
+
 export interface AddToCartPayload {
   productId: string;
   quantity: number;
@@ -254,6 +292,7 @@ export interface SubmitProductReviewPayload {
   productId: string;
   rating: number;
   text?: string;
+  guestName?: string;
 }
 
 export interface SubmitProductReviewResult {
@@ -263,6 +302,100 @@ export interface SubmitProductReviewResult {
   date?: string;
   rating?: number;
 }
+
+export interface ProductReviewsResult {
+  reviews: ProductReview[];
+  averageRating: number;
+  totalReviews: number;
+}
+
+const normalizeProductReviewsPayload = (payload: unknown): ProductReview[] => {
+  const source = payload as
+    | { reviews?: unknown[]; data?: { reviews?: unknown[] } }
+    | unknown[];
+
+  const rows = Array.isArray(source)
+    ? source
+    : Array.isArray(source.reviews)
+    ? source.reviews
+    : Array.isArray(source.data?.reviews)
+    ? source.data.reviews
+    : [];
+
+  return rows
+    .map((item) => {
+      if (!item || typeof item !== "object") {
+        return null;
+      }
+
+      const review = item as {
+        id?: string;
+        _id?: string;
+        user?: string | { name?: string; email?: string };
+        guestName?: string;
+        text?: string;
+        comment?: string;
+        createdAt?: string;
+        date?: string;
+        rating?: number;
+      };
+
+      const id = review.id ?? review._id;
+      if (!id) {
+        return null;
+      }
+
+      return {
+        id,
+        user:
+          typeof review.user === "string"
+            ? review.user
+            : review.user?.name ??
+              review.user?.email ??
+              review.guestName ??
+              "Користувач",
+        text: review.comment ?? review.text ?? "",
+        date: review.createdAt ?? review.date ?? new Date().toISOString(),
+        rating:
+          typeof review.rating === "number" && Number.isFinite(review.rating)
+            ? review.rating
+            : undefined,
+      } satisfies ProductReview;
+    })
+    .filter((item): item is ProductReview => item !== null);
+};
+
+const normalizeProductReviewsResult = (
+  payload: unknown
+): ProductReviewsResult => {
+  const reviews = normalizeProductReviewsPayload(payload);
+
+  if (!payload || typeof payload !== "object") {
+    return {
+      reviews,
+      averageRating: 0,
+      totalReviews: reviews.length,
+    };
+  }
+
+  const raw = payload as Record<string, unknown>;
+  const nested =
+    "data" in raw && raw.data && typeof raw.data === "object"
+      ? (raw.data as Record<string, unknown>)
+      : raw;
+  const rawStats =
+    nested.stats && typeof nested.stats === "object"
+      ? (nested.stats as Record<string, unknown>)
+      : null;
+  const averageRating = Number(rawStats?.averageRating ?? 0);
+  const totalReviews = Number(rawStats?.totalReviews ?? reviews.length);
+
+  return {
+    reviews,
+    averageRating: Number.isFinite(averageRating) ? averageRating : 0,
+    totalReviews: Number.isFinite(totalReviews) ? totalReviews : reviews.length,
+  };
+};
 
 export interface WishlistResult {
   items: AppProduct[];
@@ -288,28 +421,15 @@ export interface OrderResult {
   isGuest?: boolean;
 }
 
+const normalizeOrderStatus = (status: unknown): string => {
+  return typeof status === "string" && status.trim() ? status : "pending";
+};
+
 const normalizeUser = (raw: User & { _id?: string; name?: string }): User => ({
   ...raw,
   id: raw.id ?? raw._id ?? "",
   firstName: raw.firstName ?? raw.name,
 });
-
-const resolveAuthToken = (
-  payload: Partial<LoginData> | Partial<RefreshTokenData>
-): string | null => {
-  const tokenCandidate = payload.accessToken ?? payload.token;
-
-  if (typeof tokenCandidate !== "string") {
-    return null;
-  }
-
-  const normalized = tokenCandidate.trim();
-  if (!normalized || normalized === "undefined" || normalized === "null") {
-    return null;
-  }
-
-  return normalized;
-};
 
 const normalizeCartPayload = (payload: unknown): CartData => {
   const candidate = payload as
@@ -489,6 +609,128 @@ const normalizeOrderPayload = (payload: unknown): OrderResult => {
   };
 };
 
+const normalizeOrdersPayload = (payload: unknown): OrdersResult => {
+  if (!payload || typeof payload !== "object") {
+    return {
+      orders: [],
+      pagination: null,
+    };
+  }
+
+  const raw = payload as Record<string, unknown>;
+  const nested =
+    "data" in raw && raw.data && typeof raw.data === "object"
+      ? (raw.data as Record<string, unknown>)
+      : raw;
+
+  const rawOrders = Array.isArray(nested.orders)
+    ? nested.orders
+    : Array.isArray(raw.orders)
+    ? raw.orders
+    : [];
+
+  const orders = rawOrders
+    .map((entry) => {
+      if (!entry || typeof entry !== "object") {
+        return null;
+      }
+
+      const order = entry as Record<string, unknown>;
+      const id =
+        (order.id as string | undefined) ??
+        (order._id as string | undefined) ??
+        "";
+
+      if (!id) {
+        return null;
+      }
+
+      const rawItems = Array.isArray(order.items) ? order.items : [];
+
+      const items = rawItems
+        .map((item) => {
+          if (!item || typeof item !== "object") {
+            return null;
+          }
+
+          const record = item as Record<string, unknown>;
+          const product =
+            record.product && typeof record.product === "object"
+              ? (record.product as Record<string, unknown>)
+              : null;
+          const productId =
+            (product?._id as string | undefined) ??
+            (product?.id as string | undefined) ??
+            (record.productId as string | undefined);
+          const image =
+            (product?.mainImage as string | undefined) ??
+            (product?.image as string | undefined);
+          const quantity = Number(record.quantity ?? 1);
+          const price = Number(record.price ?? 0);
+          const total = Number(record.total ?? quantity * price);
+
+          return {
+            id:
+              (record.id as string | undefined) ??
+              productId ??
+              crypto.randomUUID(),
+            productId,
+            name:
+              (record.name as string | undefined) ??
+              (product?.name as string | undefined) ??
+              "Товар без назви",
+            quantity: Number.isFinite(quantity) ? quantity : 1,
+            price: Number.isFinite(price) ? price : 0,
+            total: Number.isFinite(total) ? total : 0,
+            image,
+          };
+        })
+        .filter((item): item is NonNullable<typeof item> => item !== null);
+
+      return {
+        id,
+        status: normalizeOrderStatus(order.status),
+        total: Number(order.total ?? 0),
+        subtotal: Number.isFinite(Number(order.subtotal))
+          ? Number(order.subtotal)
+          : undefined,
+        deliveryCost: Number.isFinite(Number(order.deliveryCost))
+          ? Number(order.deliveryCost)
+          : undefined,
+        paymentMethod:
+          typeof order.paymentMethod === "string"
+            ? order.paymentMethod
+            : undefined,
+        deliveryMethod:
+          typeof order.deliveryMethod === "string"
+            ? order.deliveryMethod
+            : undefined,
+        items,
+        createdAt:
+          typeof order.createdAt === "string" ? order.createdAt : undefined,
+        updatedAt:
+          typeof order.updatedAt === "string" ? order.updatedAt : undefined,
+      } satisfies Order;
+    })
+    .filter((item): item is Order => item !== null);
+
+  const rawPagination =
+    nested.pagination && typeof nested.pagination === "object"
+      ? (nested.pagination as Record<string, unknown>)
+      : null;
+
+  return {
+    orders,
+    pagination: rawPagination
+      ? {
+          currentPage: Number(rawPagination.currentPage ?? 1),
+          totalPages: Number(rawPagination.totalPages ?? 1),
+          totalItems: Number(rawPagination.totalItems ?? orders.length),
+        }
+      : null,
+  };
+};
+
 const extractSubmittedReview = (
   payload: unknown
 ): SubmitProductReviewResult => {
@@ -529,142 +771,200 @@ const extractSubmittedReview = (
   };
 };
 
-export const authService = {
-  async login(payload: LoginPayload): Promise<LoginData> {
-    const now = Date.now();
-    if (loginBackoffUntil > now) {
-      throw new Error("Забагато спроб входу. Спробуйте через кілька секунд");
-    }
+export async function loginCSR(payload: LoginPayload): Promise<LoginData> {
+  const now = Date.now();
+  if (loginBackoffUntil > now) {
+    throw new Error("Забагато спроб входу. Спробуйте через кілька секунд");
+  }
 
-    let response;
-    try {
-      response = await apiClient.post<ApiResponse<LoginData>>(
-        `${AUTH_BASE}/login`,
-        payload
-      );
-    } catch (error) {
-      const status =
-        typeof error === "object" &&
-        error &&
-        "response" in error &&
-        typeof (error as { response?: { status?: number } }).response
-          ?.status === "number"
-          ? (error as { response?: { status?: number } }).response?.status
-          : undefined;
-
-      if (status === 429) {
-        loginBackoffUntil = Date.now() + AUTH_RATE_LIMIT_BACKOFF_MS;
-      }
-
-      throw error;
-    }
-
-    const loginData = response.data.data;
-    const accessToken = resolveAuthToken(loginData);
-
-    if (accessToken) {
-      setAccessToken(accessToken);
-    } else {
-      clearAccessToken();
-    }
-
-    if (loginData.user?.role) {
-      setRole(loginData.user.role);
-    } else {
-      clearRole();
-    }
+  try {
+    const data = await apiFetch<LoginData>(`${AUTH_PROXY_BASE}/login`, {
+      method: "POST",
+      body: payload,
+    });
 
     return {
-      ...loginData,
-      accessToken: accessToken ?? "",
-      user: normalizeUser(
-        loginData.user as User & { _id?: string; name?: string }
-      ),
+      user: normalizeUser(data.user as User & { _id?: string; name?: string }),
     };
-  },
-
-  async refresh(): Promise<string> {
-    const response = await apiClient.post<ApiResponse<RefreshTokenData>>(
-      `${AUTH_BASE}/refresh`,
-      {}
-    );
-
-    const accessToken = resolveAuthToken(response.data.data);
-
-    if (!accessToken) {
-      clearAccessToken();
-      throw new Error("Не вдалося оновити токен сесії");
+  } catch (error) {
+    if (
+      typeof error === "object" &&
+      error &&
+      "status" in error &&
+      Number((error as { status?: number }).status) === 429
+    ) {
+      loginBackoffUntil = Date.now() + AUTH_RATE_LIMIT_BACKOFF_MS;
     }
 
-    setAccessToken(accessToken);
+    throw error;
+  }
+}
 
-    return accessToken;
-  },
+export async function registerCSR(
+  payload: RegisterPayload
+): Promise<RegisterData> {
+  const normalizedName = [payload.firstName, payload.lastName]
+    .filter((value): value is string => Boolean(value?.trim()))
+    .join(" ")
+    .trim();
 
-  async me(): Promise<User> {
-    const now = Date.now();
+  const data = await apiFetch<RegisterData>(`${AUTH_PROXY_BASE}/register`, {
+    method: "POST",
+    body: {
+      name: normalizedName || payload.firstName,
+      firstName: payload.firstName,
+      lastName: payload.lastName,
+      email: payload.email,
+      password: payload.password,
+      phone: payload.phone,
+    },
+  });
 
-    if (meBackoffUntil > now) {
-      throw new Error("Тимчасово обмежено запити сесії. Спробуйте пізніше");
+  return {
+    user: normalizeUser(data.user as User & { _id?: string; name?: string }),
+  };
+}
+
+export async function logoutCSR(): Promise<void> {
+  await apiFetch<null>(`${AUTH_PROXY_BASE}/logout`, {
+    method: "POST",
+    body: {},
+  });
+  resetCurrentUserRequestCache();
+  resetCommerceRequestCache();
+}
+
+export async function logoutAllCSR(): Promise<void> {
+  await apiFetch<null>(`${AUTH_PROXY_BASE}/logout-all`, {
+    method: "POST",
+    body: {},
+  });
+  resetCurrentUserRequestCache();
+  resetCommerceRequestCache();
+}
+
+export async function getCurrentUserCSR(): Promise<User | null> {
+  if (currentUserSnapshot && isFreshSnapshot(currentUserSnapshot.expiresAt)) {
+    return currentUserSnapshot.value;
+  }
+
+  if (!currentUserRequest) {
+    currentUserRequest = apiFetch<{
+      user: (User & { _id?: string; name?: string }) | null;
+    }>("/api/auth/me", {
+      retryOn401: false,
+    })
+      .then((response) => {
+        const normalized = response.user ? normalizeUser(response.user) : null;
+
+        currentUserSnapshot = {
+          value: normalized,
+          expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+        };
+
+        return normalized;
+      })
+      .finally(() => {
+        currentUserRequest = null;
+      });
+  }
+
+  return currentUserRequest;
+}
+
+export async function validateSessionCSR(): Promise<ValidateSessionData> {
+  return apiFetch<ValidateSessionData>(`${AUTH_PROXY_BASE}/validate`);
+}
+
+export async function updateProfileCSR(
+  payload: UpdateProfilePayload
+): Promise<User> {
+  const formData = new FormData();
+
+  if (payload.name?.trim()) {
+    formData.set("name", payload.name.trim());
+  }
+
+  if (payload.phone?.trim()) {
+    formData.set("phone", payload.phone.trim());
+  }
+
+  if (payload.avatarFile instanceof File) {
+    formData.set("avatar", payload.avatarFile);
+  }
+
+  const data = await apiFetch<User & { _id?: string; name?: string }>(
+    `${AUTH_PROXY_BASE}/update-profile`,
+    {
+      method: "PUT",
+      body: formData,
     }
-
-    if (meInFlight) {
-      return meInFlight;
-    }
-
-    meInFlight = (async () => {
-      try {
-        const response = await apiClient.get<
-          ApiResponse<User & { _id?: string; name?: string }>
-        >(`${AUTH_BASE}/me`);
-        const user = normalizeUser(response.data.data);
-
-        if (user.role) {
-          setRole(user.role);
-        } else {
-          clearRole();
-        }
-
-        return user;
-      } catch (error) {
-        const status =
-          typeof error === "object" &&
-          error &&
-          "response" in error &&
-          typeof (error as { response?: { status?: number } }).response
-            ?.status === "number"
-            ? (error as { response?: { status?: number } }).response?.status
-            : undefined;
-
-        if (status === 429) {
-          meBackoffUntil = Date.now() + AUTH_RATE_LIMIT_BACKOFF_MS;
-        }
-
-        throw error;
-      } finally {
-        meInFlight = null;
-      }
-    })();
-
-    return meInFlight;
-  },
-
-  async logout(): Promise<void> {
-    try {
-      await apiClient.post(`${AUTH_BASE}/logout`, {});
-    } finally {
-      clearAccessToken();
-      clearRole();
-    }
-  },
-};
-
-export async function getCartCSR(): Promise<CartData> {
-  const response = await apiClient.get<ApiResponse<CartData> | CartData>(
-    "/api/users/cart"
   );
 
-  return normalizeCartPayload(response.data);
+  const normalized = normalizeUser(data);
+  currentUserSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
+}
+
+export async function changePasswordCSR(
+  payload: ChangePasswordPayload
+): Promise<void> {
+  await apiFetch<null>(`${AUTH_PROXY_BASE}/change-password`, {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export async function forgotPasswordCSR(
+  payload: ForgotPasswordPayload
+): Promise<void> {
+  await apiFetch<null>(`${AUTH_PROXY_BASE}/forgot-password`, {
+    method: "POST",
+    body: payload,
+  });
+}
+
+export async function resetPasswordCSR(
+  token: string,
+  payload: ResetPasswordPayload
+): Promise<void> {
+  await apiFetch<null>(`${AUTH_PROXY_BASE}/reset-password/${token}`, {
+    method: "PUT",
+    body: payload,
+  });
+}
+
+export function getOAuthRedirectUrl(provider: "google" | "facebook"): string {
+  return `${AUTH_PROXY_BASE}/${provider}`;
+}
+
+export async function getCartCSR(): Promise<CartData> {
+  if (cartSnapshot && isFreshSnapshot(cartSnapshot.expiresAt)) {
+    return cartSnapshot.value;
+  }
+
+  if (!cartRequest) {
+    cartRequest = apiClient
+      .get<ApiResponse<CartData> | CartData>("/api/users/cart", {
+        params: { _ts: Date.now() },
+      })
+      .then((response) => {
+        const normalized = normalizeCartPayload(response.data);
+        cartSnapshot = {
+          value: normalized,
+          expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+        };
+        return normalized;
+      })
+      .finally(() => {
+        cartRequest = null;
+      });
+  }
+
+  return cartRequest;
 }
 
 export async function addToCartCSR(
@@ -675,7 +975,12 @@ export async function addToCartCSR(
     payload
   );
 
-  return normalizeCartPayload(response.data);
+  const normalized = normalizeCartPayload(response.data);
+  cartSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function removeFromCartCSR(productId: string): Promise<CartData> {
@@ -683,7 +988,12 @@ export async function removeFromCartCSR(productId: string): Promise<CartData> {
     `/api/users/cart/${productId}`
   );
 
-  return normalizeCartPayload(response.data);
+  const normalized = normalizeCartPayload(response.data);
+  cartSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function clearCartCSR(): Promise<CartData> {
@@ -691,13 +1001,44 @@ export async function clearCartCSR(): Promise<CartData> {
     "/api/users/cart"
   );
 
-  return normalizeCartPayload(response.data);
+  const normalized = normalizeCartPayload(response.data);
+  cartSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function getWishlistCSR(): Promise<WishlistResult> {
-  const response = await apiClient.get("/api/users/wishlist");
+  if (wishlistSnapshot && isFreshSnapshot(wishlistSnapshot.expiresAt)) {
+    return wishlistSnapshot.value;
+  }
 
-  return normalizeWishlistPayload(response.data);
+  if (!wishlistRequest) {
+    wishlistRequest = apiClient
+      .get("/api/users/wishlist", {
+        params: { _ts: Date.now() },
+      })
+      .then((response) => {
+        const normalized = normalizeWishlistPayload(response.data);
+        wishlistSnapshot = {
+          value: normalized,
+          expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+        };
+        return normalized;
+      })
+      .finally(() => {
+        wishlistRequest = null;
+      });
+  }
+
+  return wishlistRequest;
+}
+
+export async function getOrdersCSR(): Promise<OrdersResult> {
+  const response = await apiClient.get("/api/orders");
+
+  return normalizeOrdersPayload(response.data);
 }
 
 export async function addToWishlistCSR(
@@ -705,7 +1046,12 @@ export async function addToWishlistCSR(
 ): Promise<WishlistResult> {
   const response = await apiClient.post(`/api/users/wishlist/${productId}`);
 
-  return normalizeWishlistPayload(response.data);
+  const normalized = normalizeWishlistPayload(response.data);
+  wishlistSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function removeFromWishlistCSR(
@@ -713,7 +1059,12 @@ export async function removeFromWishlistCSR(
 ): Promise<WishlistResult> {
   const response = await apiClient.delete(`/api/users/wishlist/${productId}`);
 
-  return normalizeWishlistPayload(response.data);
+  const normalized = normalizeWishlistPayload(response.data);
+  wishlistSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function createOrderCSR(
@@ -781,6 +1132,19 @@ export async function createQuickOrderCSR(
   payload: QuickOrderPayload
 ): Promise<OrderResult> {
   const fallbackAddressValue = "Не вказано";
+  const normalizedPaymentMethod =
+    payload.paymentMethod === "cash_on_delivery"
+      ? "cash"
+      : payload.paymentMethod === "cash" || payload.paymentMethod === "card"
+      ? payload.paymentMethod
+      : "card";
+  const normalizedDeliveryMethod =
+    payload.deliveryMethod === "nova_poshta"
+      ? "courier"
+      : payload.deliveryMethod === "courier" ||
+        payload.deliveryMethod === "pickup"
+      ? payload.deliveryMethod
+      : "courier";
 
   const body = {
     items: [
@@ -798,8 +1162,8 @@ export async function createQuickOrderCSR(
       ...(payload.apartment ? { apartment: payload.apartment } : {}),
       ...(payload.comment ? { comment: payload.comment } : {}),
     },
-    paymentMethod: payload.paymentMethod ?? "cash_on_delivery",
-    deliveryMethod: payload.deliveryMethod ?? "nova_poshta",
+    paymentMethod: normalizedPaymentMethod,
+    deliveryMethod: normalizedDeliveryMethod,
   };
 
   const response = await apiClient.post("/api/orders/quick", body);
@@ -817,21 +1181,18 @@ export async function submitProductReviewCSR(
   }
 
   const normalizedRating = Math.max(1, Math.min(5, Math.round(payload.rating)));
-  const normalizedText = payload.text?.trim();
+  const normalizedComment = payload.text?.trim();
+
+  if (!normalizedComment || normalizedComment.length < 10) {
+    throw new Error("Відгук має містити щонайменше 10 символів");
+  }
 
   const primaryBody: Record<string, unknown> = {
     rating: normalizedRating,
-    ...(normalizedText ? { text: normalizedText } : {}),
-  };
-
-  const commentBody: Record<string, unknown> = {
-    rating: normalizedRating,
-    ...(normalizedText ? { comment: normalizedText } : {}),
-  };
-
-  const contentBody: Record<string, unknown> = {
-    rating: normalizedRating,
-    ...(normalizedText ? { content: normalizedText } : {}),
+    comment: normalizedComment,
+    ...(payload.guestName?.trim()
+      ? { guestName: payload.guestName.trim() }
+      : {}),
   };
 
   const attempts: Array<{
@@ -844,18 +1205,6 @@ export async function submitProductReviewCSR(
       method: "post",
       url: `/api/reviews/products/${payload.productId}`,
       body: primaryBody,
-      viaProxy: true,
-    },
-    {
-      method: "post",
-      url: `/api/reviews/products/${payload.productId}`,
-      body: commentBody,
-      viaProxy: true,
-    },
-    {
-      method: "post",
-      url: `/api/reviews/products/${payload.productId}`,
-      body: contentBody,
       viaProxy: true,
     },
     {
@@ -883,14 +1232,12 @@ export async function submitProductReviewCSR(
     endpoint: string,
     body: Record<string, unknown>
   ): Promise<unknown> => {
-    const token = getAccessToken();
     const response = await fetch(`/api/proxy${endpoint}`, {
       method: method.toUpperCase(),
       credentials: "include",
       headers: {
         "Content-Type": "application/json",
         Accept: "application/json",
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify(body),
     });

@@ -1,0 +1,293 @@
+"use client";
+
+import { useEffect, useRef } from "react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { Heart, Moon, ShoppingCart, Sun, User, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+
+import styles from "./MobileMenu.module.css";
+
+interface MobileMenuLink {
+  href: string;
+  label: string;
+}
+
+interface MobileMenuProps {
+  cartCount: number;
+  displayName: string;
+  isAuthenticated: boolean;
+  isOpen: boolean;
+  profileHref: string;
+  theme: "light" | "dark";
+  wishlistCount: number;
+  onClose: () => void;
+  onLogin: () => void;
+  onLogout: () => void;
+  onThemeToggle: () => void;
+}
+
+const primaryLinks: MobileMenuLink[] = [
+  { href: "/catalog", label: "Каталог" },
+  { href: "/services", label: "Послуги" },
+  { href: "/help", label: "Допомога" },
+  { href: "/news", label: "Новини" },
+  { href: "/contacts", label: "Контакти" },
+];
+
+export function MobileMenu({
+  cartCount,
+  displayName,
+  isAuthenticated,
+  isOpen,
+  profileHref,
+  theme,
+  wishlistCount,
+  onClose,
+  onLogin,
+  onLogout,
+  onThemeToggle,
+}: MobileMenuProps) {
+  const pathname = usePathname();
+  const drawerRef = useRef<HTMLElement | null>(null);
+  const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+
+  const isLinkActive = (href: string) => {
+    if (href === "/") {
+      return pathname === href;
+    }
+
+    return pathname === href || pathname.startsWith(`${href}/`);
+  };
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const previousActiveElement = document.activeElement;
+    const getFocusableElements = () => {
+      if (!drawerRef.current) {
+        return [] as HTMLElement[];
+      }
+
+      return Array.from(
+        drawerRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), textarea, input, select, [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => {
+        return (
+          !element.hasAttribute("disabled") &&
+          !element.getAttribute("aria-hidden")
+        );
+      });
+    };
+
+    const focusFirstElement = window.requestAnimationFrame(() => {
+      closeButtonRef.current?.focus();
+    });
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "Tab") {
+        return;
+      }
+
+      const focusableElements = getFocusableElements();
+
+      if (focusableElements.length === 0) {
+        event.preventDefault();
+        return;
+      }
+
+      const firstElement = focusableElements[0];
+      const lastElement = focusableElements[focusableElements.length - 1];
+      const activeElement = document.activeElement;
+
+      if (event.shiftKey && activeElement === firstElement) {
+        event.preventDefault();
+        lastElement.focus();
+        return;
+      }
+
+      if (!event.shiftKey && activeElement === lastElement) {
+        event.preventDefault();
+        firstElement.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(focusFirstElement);
+      document.removeEventListener("keydown", handleKeyDown);
+
+      if (previousActiveElement instanceof HTMLElement) {
+        previousActiveElement.focus();
+      }
+    };
+  }, [isOpen]);
+
+  return (
+    <AnimatePresence>
+      {isOpen ? (
+        <>
+          <motion.button
+            type="button"
+            className={styles.overlay}
+            aria-label="Закрити меню"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            onClick={onClose}
+          />
+
+          <motion.aside
+            id="mobile-menu"
+            ref={drawerRef}
+            className={styles.drawer}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Мобільне меню"
+            initial={{ opacity: 0, x: "100%" }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: "100%" }}
+            transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+          >
+            <div className={styles.header}>
+              <div>
+                <p className={styles.eyebrow}>Навігація</p>
+                <h2 className={styles.title}>БудЛідер</h2>
+              </div>
+              <button
+                type="button"
+                ref={closeButtonRef}
+                className={styles.closeButton}
+                onClick={onClose}
+                aria-label="Закрити меню"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className={styles.section}>
+              <div className={styles.quickActions}>
+                <Link
+                  href="/wishlist"
+                  className={`${styles.quickAction} ${
+                    isLinkActive("/wishlist") ? styles.quickActionActive : ""
+                  }`}
+                  aria-current={isLinkActive("/wishlist") ? "page" : undefined}
+                  onClick={onClose}
+                >
+                  <Heart size={18} />
+                  <span>Обране</span>
+                  {wishlistCount > 0 ? (
+                    <span className={styles.countBadge}>{wishlistCount}</span>
+                  ) : null}
+                </Link>
+                <Link
+                  href="/cart"
+                  className={`${styles.quickAction} ${
+                    isLinkActive("/cart") ? styles.quickActionActive : ""
+                  }`}
+                  aria-current={isLinkActive("/cart") ? "page" : undefined}
+                  onClick={onClose}
+                >
+                  <ShoppingCart size={18} />
+                  <span>Кошик</span>
+                  {cartCount > 0 ? (
+                    <span className={styles.countBadge}>{cartCount}</span>
+                  ) : null}
+                </Link>
+              </div>
+            </div>
+
+            <nav className={styles.section} aria-label="Мобільна навігація">
+              <ul className={styles.linkList}>
+                {primaryLinks.map((link) => (
+                  <li key={link.href}>
+                    <Link
+                      href={link.href}
+                      className={`${styles.link} ${
+                        isLinkActive(link.href) ? styles.linkActive : ""
+                      }`}
+                      aria-current={
+                        isLinkActive(link.href) ? "page" : undefined
+                      }
+                      onClick={onClose}
+                    >
+                      {link.label}
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </nav>
+
+            <div className={styles.section}>
+              <button
+                type="button"
+                className={styles.themeButton}
+                onClick={onThemeToggle}
+              >
+                {theme === "light" ? <Moon size={18} /> : <Sun size={18} />}
+                <span>{theme === "light" ? "Темна тема" : "Світла тема"}</span>
+              </button>
+            </div>
+
+            <div className={styles.section}>
+              {isAuthenticated ? (
+                <>
+                  <Link
+                    href={profileHref}
+                    className={`${styles.profileCard} ${
+                      isLinkActive(profileHref) ? styles.quickActionActive : ""
+                    }`}
+                    aria-current={
+                      isLinkActive(profileHref) ? "page" : undefined
+                    }
+                    onClick={onClose}
+                  >
+                    <User size={18} />
+                    <div>
+                      <p className={styles.profileLabel}>Профіль</p>
+                      <p className={styles.profileValue}>{displayName}</p>
+                    </div>
+                  </Link>
+                  <button
+                    type="button"
+                    className={styles.secondaryButton}
+                    onClick={onLogout}
+                  >
+                    Вийти
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  className={styles.primaryButton}
+                  onClick={onLogin}
+                >
+                  Увійти
+                </button>
+              )}
+            </div>
+
+            <div className={styles.footer}>
+              <a
+                href="tel:+380686868400"
+                className={styles.contactLink}
+                onClick={onClose}
+              >
+                068-68-68-400
+              </a>
+              <p className={styles.footerText}>
+                Працюємо щодня для ваших замовлень
+              </p>
+            </div>
+          </motion.aside>
+        </>
+      ) : null}
+    </AnimatePresence>
+  );
+}

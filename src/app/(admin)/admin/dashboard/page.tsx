@@ -3,36 +3,24 @@
 import { useEffect, useState } from "react";
 import { Package, ShoppingCart, Users, TrendingUp } from "lucide-react";
 
-import { apiClient as api } from "@/services/apiClient";
+import { apiFetch } from "@/services/api";
 import type { AdminOrder, DashboardStat } from "@/types/dashboard";
 import styles from "./Dashboard.module.css";
+
+type DashboardPayload = {
+  data?: { stats?: DashboardStat[]; orders?: unknown[] };
+  stats?: DashboardStat[];
+  orders?: unknown[];
+};
+
+let adminDashboardRequest: Promise<DashboardPayload> | null = null;
+let adminDashboardSnapshot: DashboardPayload | null = null;
 
 const iconMap = {
   revenue: TrendingUp,
   orders: ShoppingCart,
   products: Package,
   users: Users,
-};
-
-const normalizeOrders = (raw: unknown): AdminOrder[] => {
-  if (!raw || typeof raw !== "object") {
-    return [];
-  }
-
-  const candidate = raw as {
-    orders?: AdminOrder[];
-    data?: { orders?: AdminOrder[] };
-  };
-
-  if (Array.isArray(candidate.orders)) {
-    return candidate.orders;
-  }
-
-  if (candidate.data && Array.isArray(candidate.data.orders)) {
-    return candidate.data.orders;
-  }
-
-  return [];
 };
 
 const normalizeStatsFromAdmin = (raw: unknown): DashboardStat[] => {
@@ -102,6 +90,25 @@ const normalizeRecentOrdersFromAdmin = (raw: unknown): AdminOrder[] => {
     .filter((item): item is AdminOrder => item !== null);
 };
 
+const fetchAdminDashboard = async (): Promise<DashboardPayload> => {
+  if (adminDashboardSnapshot) {
+    return adminDashboardSnapshot;
+  }
+
+  if (!adminDashboardRequest) {
+    adminDashboardRequest = apiFetch<DashboardPayload>("/api/admin/stats")
+      .then((payload) => {
+        adminDashboardSnapshot = payload;
+        return payload;
+      })
+      .finally(() => {
+        adminDashboardRequest = null;
+      });
+  }
+
+  return adminDashboardRequest;
+};
+
 export default function DashboardPage() {
   const [stats, setStats] = useState<DashboardStat[]>([]);
   const [orders, setOrders] = useState<AdminOrder[]>([]);
@@ -109,82 +116,16 @@ export default function DashboardPage() {
   useEffect(() => {
     const loadDashboard = async () => {
       try {
-        const statsRes = await api.get("/api/admin/stats");
-        const statsPayload = statsRes.data as {
-          data?: { stats?: DashboardStat[]; orders?: unknown[] };
-          stats?: DashboardStat[];
-          orders?: unknown[];
-        };
+        const statsPayload = await fetchAdminDashboard();
 
         const adminStats = normalizeStatsFromAdmin(statsPayload);
         const adminOrders = normalizeRecentOrdersFromAdmin(statsPayload);
 
         if (adminStats.length > 0) {
           setStats(adminStats);
-        }
-
-        if (adminOrders.length > 0) {
           setOrders(adminOrders);
           return;
         }
-
-        const [ordersRes, usersRes, productsRes] = await Promise.all([
-          api.get("/api/orders/admin/all", {
-            params: { page: 1, limit: 5 },
-          }),
-          api.get("/api/users", {
-            params: { page: 1, limit: 1 },
-          }),
-          api.get("/api/products", {
-            params: { page: 1, limit: 1 },
-          }),
-        ]);
-
-        const recentOrders = normalizeOrders(ordersRes.data);
-
-        const usersTotal =
-          (usersRes.data as { data?: { pagination?: { total?: number } } })
-            ?.data?.pagination?.total ?? 0;
-        const productsTotal =
-          (productsRes.data as { data?: { pagination?: { total?: number } } })
-            ?.data?.pagination?.total ?? 0;
-
-        const revenue = recentOrders.reduce(
-          (sum, order) => sum + order.totalAmount,
-          0
-        );
-
-        setStats([
-          {
-            id: "revenue",
-            title: "Виторг (останні 5)",
-            value: `${revenue.toLocaleString()} ₴`,
-            trend: "Оновлюється в реальному часі",
-            icon: "revenue",
-          },
-          {
-            id: "orders",
-            title: "Замовлення",
-            value: String(recentOrders.length),
-            trend: "Останні 5 записів",
-            icon: "orders",
-          },
-          {
-            id: "products",
-            title: "Товари",
-            value: String(productsTotal),
-            trend: "Загалом у каталозі",
-            icon: "products",
-          },
-          {
-            id: "users",
-            title: "Користувачі",
-            value: String(usersTotal),
-            trend: "Зареєстрованих",
-            icon: "users",
-          },
-        ]);
-        setOrders(recentOrders);
       } catch {
         setStats([]);
         setOrders([]);

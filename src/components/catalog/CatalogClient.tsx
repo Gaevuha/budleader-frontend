@@ -26,6 +26,7 @@ import type { Product } from "@/types/product";
 import { mapApiProductToAppProduct } from "@/services/api";
 import { getProductsCSR } from "@/services/apiClient";
 import { useDebounce } from "@/hooks/useDebounce";
+import { useBreakpoint } from "@/hooks/useBreakpoint";
 import styles from "@/components/catalog/Catalog.module.css";
 
 interface CatalogClientProps {
@@ -45,7 +46,8 @@ interface PageChangeEvent {
   selected: number;
 }
 
-const PAGE_LIMIT = 12;
+const DESKTOP_PAGE_LIMIT = 12;
+const COMPACT_PAGE_LIMIT = 8;
 
 const normalizeToken = (value: string): string =>
   decodeURIComponent(value).trim().toLowerCase();
@@ -76,6 +78,9 @@ export function CatalogClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const { isDesktop, isMobile, isTablet } = useBreakpoint();
+  const isCompactLayout = isMobile || isTablet;
+  const pageLimit = isDesktop ? DESKTOP_PAGE_LIMIT : COMPACT_PAGE_LIMIT;
   const [searchTerm, setSearchTerm] = useState(initialSearch);
   const searchTermRef = useRef(searchTerm);
   const urlSearchTerm = (searchParams.get("search") ?? "").trim();
@@ -94,6 +99,12 @@ export function CatalogClient({
         .filter((product): product is AppProduct => product !== null),
     [initialProducts]
   );
+  const [compactProducts, setCompactProducts] = useState<AppProduct[]>(() =>
+    initialProductsMapped.slice(0, COMPACT_PAGE_LIMIT)
+  );
+  const [compactVisibleCount, setCompactVisibleCount] =
+    useState(COMPACT_PAGE_LIMIT);
+  const [isLoadMorePending, setIsLoadMorePending] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [selectedBrands, setSelectedBrands] = useState<string[]>(initialBrands);
   const [inStockOnly, setInStockOnly] = useState(false);
@@ -104,6 +115,7 @@ export function CatalogClient({
   const [sortOrder, setSortOrder] = useState("default");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [showInitialLoader, setShowInitialLoader] = useState(true);
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
 
   // Effective server-side filters — may differ from URL params when the user
   // toggles isNew/isSale checkboxes in the sidebar.
@@ -111,6 +123,13 @@ export function CatalogClient({
   const [effectiveIsSale, setEffectiveIsSale] = useState(initialIsSale);
   const [effectiveBrands, setEffectiveBrands] =
     useState<string[]>(initialBrands);
+  const compactQueryStateKey = [
+    initialCategory,
+    effectiveBrands.join(","),
+    effectiveIsNew ? "new" : "",
+    effectiveIsSale ? "sale" : "",
+    debouncedSearchTerm,
+  ].join("|");
 
   useEffect(() => {
     const prevUrlSearch = prevUrlSearchRef.current;
@@ -154,10 +173,35 @@ export function CatalogClient({
     [initialFilterProducts]
   );
 
+  const buildLocalSearchResult = useCallback(
+    (normalizedSearch: string) => {
+      const matched = filterSourceProducts.filter((product) =>
+        normalizeSearchText(product.name).includes(normalizedSearch)
+      );
+
+      const total = matched.length;
+      const totalPages = Math.max(1, Math.ceil(total / pageLimit));
+      const safePage = Math.min(Math.max(currentPage, 1), totalPages);
+      const start = (safePage - 1) * pageLimit;
+
+      return {
+        products: matched.slice(start, start + pageLimit),
+        pagination: {
+          page: safePage,
+          limit: pageLimit,
+          total,
+          totalPages,
+        },
+      };
+    },
+    [currentPage, filterSourceProducts, pageLimit]
+  );
+
   const productsQuery = useQuery({
     queryKey: [
       "catalog-products",
       currentPage,
+      pageLimit,
       initialCategory,
       effectiveBrands.join(","),
       effectiveIsNew,
@@ -165,46 +209,36 @@ export function CatalogClient({
       debouncedSearchTerm,
     ],
     queryFn: async () => {
-      const result = await getProductsCSR({
-        page: currentPage,
-        limit: PAGE_LIMIT,
-        category: initialCategory || undefined,
-        brand:
-          effectiveBrands.length > 0 ? effectiveBrands.join(",") : undefined,
-        isNew: effectiveIsNew || undefined,
-        isSale: effectiveIsSale || undefined,
-        search: debouncedSearchTerm || undefined,
-      });
-
       const normalizedSearch = normalizeSearchText(debouncedSearchTerm);
-      const shouldUseLocalFallback =
-        normalizedSearch.length > 0 && result.products.length === 0;
+      const canUseLocalSearchFallback =
+        normalizedSearch.length > 0 && filterSourceProducts.length > 0;
 
-      if (shouldUseLocalFallback && filterSourceProducts.length > 0) {
-        const matched = filterSourceProducts.filter((product) =>
-          normalizeSearchText(product.name).includes(normalizedSearch)
-        );
+      try {
+        const result = await getProductsCSR({
+          page: currentPage,
+          limit: pageLimit,
+          category: initialCategory || undefined,
+          brand:
+            effectiveBrands.length > 0 ? effectiveBrands.join(",") : undefined,
+          isNew: effectiveIsNew || undefined,
+          isSale: effectiveIsSale || undefined,
+          search: debouncedSearchTerm || undefined,
+        });
 
-        const total = matched.length;
-        const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
-        const safePage = Math.min(Math.max(currentPage, 1), totalPages);
-        const start = (safePage - 1) * PAGE_LIMIT;
-        const fallbackPage = matched.slice(start, start + PAGE_LIMIT);
+        if (canUseLocalSearchFallback && result.products.length === 0) {
+          return buildLocalSearchResult(normalizedSearch);
+        }
 
-        return {
-          products: fallbackPage,
-          pagination: {
-            page: safePage,
-            limit: PAGE_LIMIT,
-            total,
-            totalPages,
-          },
-        };
+        return result;
+      } catch {
+        if (canUseLocalSearchFallback) {
+          return buildLocalSearchResult(normalizedSearch);
+        }
+
+        throw new Error("Не вдалося завантажити товари каталогу");
       }
-
-      return result;
     },
-    placeholderData: keepPreviousData,
+    placeholderData: isDesktop ? keepPreviousData : undefined,
   });
 
   const products = useMemo(
@@ -225,6 +259,78 @@ export function CatalogClient({
       setShowInitialLoader(false);
     });
   }, [productsQuery.isFetching, showInitialLoader]);
+
+  useEffect(() => {
+    if (!isCompactLayout) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setCompactVisibleCount(COMPACT_PAGE_LIMIT);
+      setIsLoadMorePending(false);
+      setCurrentPage(1);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [compactQueryStateKey, isCompactLayout]);
+
+  useEffect(() => {
+    if (!isCompactLayout || !productsQuery.data) {
+      return;
+    }
+
+    const queryPage = productsQuery.data.pagination?.page ?? currentPage;
+
+    if (queryPage !== currentPage) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      setCompactProducts((prev) => {
+        const nextProducts = productsQuery.data?.products ?? [];
+
+        if (currentPage === 1) {
+          return nextProducts;
+        }
+
+        const knownIds = new Set(prev.map((product) => product.id));
+
+        return [
+          ...prev,
+          ...nextProducts.filter((product) => !knownIds.has(product.id)),
+        ];
+      });
+      setIsLoadMorePending(false);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [currentPage, isCompactLayout, productsQuery.data]);
+
+  useEffect(() => {
+    if (isDesktop) {
+      const frameId = window.requestAnimationFrame(() => {
+        setIsFiltersOpen(false);
+      });
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+
+    if (!isFiltersOpen) {
+      return;
+    }
+
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = "";
+    };
+  }, [isDesktop, isFiltersOpen]);
 
   // Triggers a fresh server fetch for isNew/isSale — the DB fields
   // (isNewProduct, isOnSale) are not reliably present on all records, so
@@ -415,11 +521,11 @@ export function CatalogClient({
     }
 
     const total = locallyFilteredProducts.length;
-    const totalPages = Math.max(1, Math.ceil(total / PAGE_LIMIT));
+    const totalPages = Math.max(1, Math.ceil(total / DESKTOP_PAGE_LIMIT));
 
     return {
       page: Math.min(currentPage, totalPages),
-      limit: PAGE_LIMIT,
+      limit: DESKTOP_PAGE_LIMIT,
       total,
       totalPages,
     } satisfies Pagination;
@@ -435,8 +541,8 @@ export function CatalogClient({
       return locallyFilteredProducts;
     }
 
-    const start = (currentPage - 1) * PAGE_LIMIT;
-    return locallyFilteredProducts.slice(start, start + PAGE_LIMIT);
+    const start = (currentPage - 1) * DESKTOP_PAGE_LIMIT;
+    return locallyFilteredProducts.slice(start, start + DESKTOP_PAGE_LIMIT);
   }, [currentPage, hasLocalFilters, locallyFilteredProducts]);
 
   useEffect(() => {
@@ -446,7 +552,7 @@ export function CatalogClient({
 
     const totalPages = Math.max(
       1,
-      Math.ceil(locallyFilteredProducts.length / PAGE_LIMIT)
+      Math.ceil(locallyFilteredProducts.length / DESKTOP_PAGE_LIMIT)
     );
     if (currentPage > totalPages) {
       startTransition(() => {
@@ -469,23 +575,29 @@ export function CatalogClient({
     });
   }, []);
 
-  const normalizeCatalogUrl = useCallback(() => {
-    const query = new URLSearchParams();
+  const normalizeCatalogUrl = useCallback(
+    (options?: { search?: string }) => {
+      const query = new URLSearchParams();
+      const nextSearch = options?.search ?? searchTerm;
 
-    if (initialCategory) {
-      query.set("category", initialCategory);
-    }
+      if (initialCategory) {
+        query.set("category", initialCategory);
+      }
 
-    if (searchTerm.trim()) {
-      query.set("search", searchTerm.trim());
-    }
+      if (nextSearch.trim()) {
+        query.set("search", nextSearch.trim());
+      }
 
-    const queryString = query.toString();
-    const basePath = pathname || "/catalog";
-    return queryString ? `${basePath}?${queryString}` : basePath;
-  }, [initialCategory, pathname, searchTerm]);
+      const queryString = query.toString();
+      const basePath = pathname || "/catalog";
+      return queryString ? `${basePath}?${queryString}` : basePath;
+    },
+    [initialCategory, pathname, searchTerm]
+  );
 
-  const clearFilters = () => {
+  const clearFilters = (options?: { clearSearch?: boolean }) => {
+    const shouldClearSearch = options?.clearSearch ?? false;
+
     setSelectedBrands([]);
     setInStockOnly(false);
     setMinPrice("");
@@ -498,7 +610,14 @@ export function CatalogClient({
     setEffectiveIsSale(false);
     setCurrentPage(1);
 
-    router.replace(normalizeCatalogUrl(), { scroll: false });
+    if (shouldClearSearch) {
+      setSearchTerm("");
+    }
+
+    router.replace(
+      normalizeCatalogUrl({ search: shouldClearSearch ? "" : searchTerm }),
+      { scroll: false }
+    );
   };
 
   const handleMinPriceChange = useCallback(
@@ -623,13 +742,67 @@ export function CatalogClient({
 
   const effectivePagination = derivedPagination;
   const effectivePageCount = Math.max(1, effectivePagination?.totalPages ?? 1);
-  const shouldShowPagination = effectivePageCount > 1;
-  const isCatalogLoading = showInitialLoader;
+  const shouldShowPagination = isDesktop && effectivePageCount > 1;
+  const compactDisplayedProducts = useMemo(() => {
+    if (!isCompactLayout) {
+      return [] as AppProduct[];
+    }
+
+    if (hasLocalFilters) {
+      return locallyFilteredProducts.slice(0, compactVisibleCount);
+    }
+
+    return compactProducts;
+  }, [
+    compactProducts,
+    compactVisibleCount,
+    hasLocalFilters,
+    isCompactLayout,
+    locallyFilteredProducts,
+  ]);
+  const compactTotalProducts = hasLocalFilters
+    ? locallyFilteredProducts.length
+    : effectivePagination?.total ?? compactProducts.length;
+  const canLoadMoreCompactProducts = isCompactLayout
+    ? hasLocalFilters
+      ? compactVisibleCount < locallyFilteredProducts.length
+      : compactProducts.length < compactTotalProducts
+    : false;
+  const displayedProducts = isCompactLayout
+    ? compactDisplayedProducts
+    : filteredProducts;
+  const isCatalogLoading = isDesktop
+    ? showInitialLoader
+    : showInitialLoader && compactProducts.length === 0;
 
   const handlePageChange = ({ selected }: PageChangeEvent) => {
     const nextPage = selected + 1;
     setCurrentPage(nextPage);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const handleLoadMore = () => {
+    if (!isCompactLayout || isLoadMorePending) {
+      return;
+    }
+
+    if (hasLocalFilters) {
+      setIsLoadMorePending(true);
+
+      window.setTimeout(() => {
+        setCompactVisibleCount((prev) => prev + COMPACT_PAGE_LIMIT);
+        setIsLoadMorePending(false);
+      }, 300);
+
+      return;
+    }
+
+    if (compactProducts.length >= compactTotalProducts) {
+      return;
+    }
+
+    setIsLoadMorePending(true);
+    setCurrentPage((prev) => prev + 1);
   };
 
   return (
@@ -657,6 +830,8 @@ export function CatalogClient({
         <CatalogFilters
           brands={brands}
           brandCounts={brandCounts}
+          isDesktop={isDesktop}
+          isOpen={isFiltersOpen}
           selectedBrands={selectedBrands}
           onToggleBrand={handleToggleBrand}
           inStockOnly={inStockOnly}
@@ -674,17 +849,35 @@ export function CatalogClient({
           isSaleCount={filterCounts.isSale}
           onMinPriceChange={handleMinPriceChange}
           onMaxPriceChange={handleMaxPriceChange}
+          onClose={() => setIsFiltersOpen(false)}
           onReset={clearFilters}
         />
 
         <main className={styles.main}>
+          {!isDesktop ? (
+            <div className={styles.mobileActionsRow}>
+              <button
+                type="button"
+                className={styles.mobileFiltersBtn}
+                onClick={() => setIsFiltersOpen(true)}
+                aria-expanded={isFiltersOpen}
+                aria-controls="catalog-filters"
+              >
+                Фільтр
+              </button>
+              <span className={styles.mobileResultsCount}>
+                {effectivePagination?.total ?? displayedProducts.length} товарів
+              </span>
+            </div>
+          ) : null}
+
           <CatalogToolbar
             viewMode={viewMode}
             onViewModeChange={setViewMode}
             sortOrder={sortOrder}
             onSortOrderChange={setSortOrder}
             productsCount={
-              effectivePagination?.total ?? filteredProducts.length
+              effectivePagination?.total ?? displayedProducts.length
             }
             title={breadcrumbSegments[breadcrumbSegments.length - 1]}
           />
@@ -696,10 +889,31 @@ export function CatalogClient({
           ) : (
             <>
               <ProductList
-                products={filteredProducts}
+                products={displayedProducts}
                 viewMode={viewMode}
-                onResetFilters={clearFilters}
+                onResetFilters={() => clearFilters({ clearSearch: true })}
               />
+
+              {isCompactLayout && canLoadMoreCompactProducts ? (
+                <div className={styles.loadMoreWrap}>
+                  <button
+                    type="button"
+                    className={styles.loadMoreButton}
+                    onClick={handleLoadMore}
+                    disabled={isLoadMorePending}
+                  >
+                    {isLoadMorePending ? (
+                      <span
+                        className={styles.loadMoreLoader}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <span>
+                      {isLoadMorePending ? "Завантаження..." : "Показати ще"}
+                    </span>
+                  </button>
+                </div>
+              ) : null}
 
               {shouldShowPagination && (
                 <ReactPaginate

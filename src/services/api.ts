@@ -6,17 +6,9 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 
-import type { ApiResponse } from "@/types/api";
-import type { RefreshTokenData } from "@/types/auth";
 import type { AppProduct } from "@/types/app";
 import type { Product } from "@/types/product";
 import { PRODUCT_PLACEHOLDER_SRC, resolveMediaUrl } from "@/utils/media";
-import {
-  clearAccessToken,
-  clearRole,
-  getAccessToken,
-  setAccessToken,
-} from "@/utils/token";
 
 const normalizeApiBaseUrl = (rawUrl: string): string => {
   const trimmed = rawUrl.replace(/\/+$/, "");
@@ -27,10 +19,28 @@ export const API_BASE_URL = normalizeApiBaseUrl(
   process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
 );
 export const API_TIMEOUT_MS = 15_000;
+export const API_PROXY_PREFIX = "/api/proxy";
+export const AUTH_PROXY_BASE = `${API_PROXY_PREFIX}/api/auth`;
 const REFRESH_ENDPOINT = "/api/auth/refresh";
+const AUTH_ENDPOINT_PREFIX = "/api/auth";
 const CATALOG_BACKOFF_MS = 15_000;
 const CATEGORIES_CACHE_TTL_MS = 5 * 60_000;
 const PRODUCTS_CACHE_TTL_MS = 30_000;
+
+let refreshPromise: Promise<void> | null = null;
+let axiosRefreshPromise: Promise<void> | null = null;
+
+export class ApiFetchError extends Error {
+  status: number;
+  data: unknown;
+
+  constructor(message: string, status: number, data: unknown) {
+    super(message);
+    this.name = "ApiFetchError";
+    this.status = status;
+    this.data = data;
+  }
+}
 
 type ApiProductCandidate = Product & {
   _id?: string;
@@ -135,6 +145,225 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 };
 
+const parseResponseBody = async (response: Response): Promise<unknown> => {
+  if (response.status === 204) {
+    return null;
+  }
+
+  const text = await response.text();
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text) as unknown;
+  } catch {
+    return text;
+  }
+};
+
+const extractApiMessage = (payload: unknown): string | null => {
+  if (typeof payload === "string" && payload.trim()) {
+    return payload.trim();
+  }
+
+  if (!isRecord(payload)) {
+    return null;
+  }
+
+  const nestedError = payload.error;
+  if (isRecord(nestedError) && typeof nestedError.message === "string") {
+    return nestedError.message;
+  }
+
+  if (typeof payload.message === "string") {
+    return payload.message;
+  }
+
+  return null;
+};
+
+export const getApiErrorMessage = (
+  error: unknown,
+  fallback = "Сталася помилка запиту"
+): string => {
+  if (error instanceof ApiFetchError) {
+    return extractApiMessage(error.data) ?? error.message ?? fallback;
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (isRecord(error) && "response" in error) {
+    const response = error.response;
+    if (isRecord(response) && "data" in response) {
+      return extractApiMessage(response.data) ?? fallback;
+    }
+  }
+
+  return fallback;
+};
+
+const unwrapApiData = <T>(payload: unknown): T => {
+  if (isRecord(payload) && "data" in payload) {
+    return payload.data as T;
+  }
+
+  return payload as T;
+};
+
+const buildFetchBody = (
+  body: BodyInit | object | null | undefined,
+  headers: Headers
+): BodyInit | undefined => {
+  if (body == null) {
+    return undefined;
+  }
+
+  if (
+    typeof body === "string" ||
+    body instanceof FormData ||
+    body instanceof URLSearchParams ||
+    body instanceof Blob ||
+    body instanceof ArrayBuffer ||
+    ArrayBuffer.isView(body)
+  ) {
+    return body as BodyInit;
+  }
+
+  if (!headers.has("Content-Type")) {
+    headers.set("Content-Type", "application/json");
+  }
+
+  return JSON.stringify(body);
+};
+
+const refreshAuthSession = async (): Promise<void> => {
+  if (!refreshPromise) {
+    refreshPromise = (async () => {
+      const response = await fetch(`${AUTH_PROXY_BASE}/refresh`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      });
+
+      if (!response.ok) {
+        const payload = await parseResponseBody(response);
+        throw new ApiFetchError(
+          extractApiMessage(payload) ?? "Не вдалося оновити сесію",
+          response.status,
+          payload
+        );
+      }
+
+      await parseResponseBody(response);
+    })().finally(() => {
+      refreshPromise = null;
+    });
+  }
+
+  return refreshPromise;
+};
+
+const refreshAxiosSession = async (): Promise<void> => {
+  if (!axiosRefreshPromise) {
+    axiosRefreshPromise = (async () => {
+      const response = await fetch(REFRESH_ENDPOINT, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
+      });
+
+      const payload = await parseResponseBody(response);
+
+      if (!response.ok) {
+        throw new ApiFetchError(
+          extractApiMessage(payload) ?? "Не вдалося оновити сесію",
+          response.status,
+          payload
+        );
+      }
+
+      const refreshResult =
+        payload && typeof payload === "object"
+          ? (payload as { success?: boolean; message?: string })
+          : null;
+
+      if (refreshResult?.success === false) {
+        throw new ApiFetchError(
+          refreshResult.message ?? "Не вдалося оновити сесію",
+          401,
+          payload
+        );
+      }
+    })().finally(() => {
+      axiosRefreshPromise = null;
+    });
+  }
+
+  return axiosRefreshPromise;
+};
+
+interface ApiFetchOptions extends Omit<RequestInit, "body"> {
+  body?: BodyInit | object | null;
+  retryOn401?: boolean;
+}
+
+export async function apiFetch<T>(
+  input: string,
+  options: ApiFetchOptions = {}
+): Promise<T> {
+  const { retryOn401 = true, body, headers: rawHeaders, ...rest } = options;
+  const headers = new Headers(rawHeaders);
+
+  if (!headers.has("Accept")) {
+    headers.set("Accept", "application/json");
+  }
+
+  const response = await fetch(input, {
+    ...rest,
+    credentials: "include",
+    headers,
+    body: buildFetchBody(body, headers),
+    cache: rest.cache ?? "no-store",
+  });
+
+  const payload = await parseResponseBody(response);
+
+  if (
+    response.status === 401 &&
+    retryOn401 &&
+    !input.includes("/auth/refresh")
+  ) {
+    await refreshAuthSession();
+
+    return apiFetch<T>(input, {
+      ...options,
+      retryOn401: false,
+    });
+  }
+
+  if (!response.ok) {
+    throw new ApiFetchError(
+      extractApiMessage(payload) ??
+        `Request failed with status ${response.status}`,
+      response.status,
+      payload
+    );
+  }
+
+  return unwrapApiData<T>(payload);
+}
+
 const findProductArray = (payload: unknown, depth = 0): unknown[] => {
   if (Array.isArray(payload)) {
     return payload;
@@ -224,6 +453,12 @@ const isPublicEndpointPath = (path: string): boolean => {
   return path === "/api/categories" || path === "/api/products";
 };
 
+const isAuthEndpointPath = (path: string): boolean => {
+  return (
+    path === AUTH_ENDPOINT_PREFIX || path.startsWith(`${AUTH_ENDPOINT_PREFIX}/`)
+  );
+};
+
 const shouldProtectCatalogGet = (
   config: InternalAxiosRequestConfig
 ): boolean => {
@@ -311,6 +546,52 @@ const buildLocalRateLimitError = (
   );
 };
 
+const resolveAxiosAdapter = (
+  candidate:
+    | InternalAxiosRequestConfig["adapter"]
+    | AxiosInstance["defaults"]["adapter"]
+): AxiosAdapter | null => {
+  if (!candidate) {
+    return null;
+  }
+
+  if (typeof candidate === "function") {
+    return candidate;
+  }
+
+  try {
+    return axios.getAdapter(candidate);
+  } catch {
+    return null;
+  }
+};
+
+const logAxiosDebug = (
+  label: string,
+  error: unknown,
+  extra?: Record<string, unknown>
+) => {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  const axiosError = axios.isAxiosError(error) ? error : null;
+
+  console.error(label, {
+    ...extra,
+    message:
+      axiosError?.message ??
+      (error instanceof Error ? error.message : String(error)),
+    code: axiosError?.code,
+    status: axiosError?.response?.status,
+    url: axiosError?.config?.url,
+    method: axiosError?.config?.method,
+    params: axiosError?.config?.params,
+    data: axiosError?.response?.data,
+    error,
+  });
+};
+
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: API_TIMEOUT_MS,
@@ -323,17 +604,9 @@ export const api: AxiosInstance = axios.create({
 
 api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const path = toPathname(config.url);
-  const token = getAccessToken();
 
-  // Public catalog endpoints should not receive a stale bearer token.
-  if (isPublicEndpointPath(path)) {
-    if (config.headers.Authorization) {
-      delete config.headers.Authorization;
-    }
-  }
-
-  if (token && !config.headers.Authorization && !isPublicEndpointPath(path)) {
-    config.headers.Authorization = `Bearer ${token}`;
+  if (isPublicEndpointPath(path) && config.headers.Authorization) {
+    delete config.headers.Authorization;
   }
 
   if (!shouldProtectCatalogGet(config)) {
@@ -343,13 +616,9 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const now = Date.now();
   const key = buildGetKey(config);
   const cached = getCache.get(key);
-  const adapterFromConfig = config.adapter;
-  const defaultAdapter = api.defaults.adapter;
   const adapter =
-    (Array.isArray(adapterFromConfig)
-      ? adapterFromConfig[0]
-      : adapterFromConfig) ??
-    (Array.isArray(defaultAdapter) ? defaultAdapter[0] : defaultAdapter);
+    resolveAxiosAdapter(config.adapter) ??
+    resolveAxiosAdapter(api.defaults.adapter);
 
   if (cached && cached.expiresAt > now) {
     config.adapter = async () => cloneResponse(cached.response);
@@ -416,41 +685,64 @@ api.interceptors.response.use(
     const requestPath = toPathname(originalRequest?.url);
 
     if (
+      error.response?.status === 304 &&
+      originalRequest &&
+      isPublicEndpointPath(requestPath)
+    ) {
+      const cacheKey = buildGetKey(originalRequest);
+      const cached = getCache.get(cacheKey);
+
+      if (cached) {
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[api] recovered cached response after 304", {
+            path: requestPath,
+            url: originalRequest.url,
+            params: originalRequest.params,
+            cacheKey,
+          });
+        }
+
+        return cloneResponse(cached.response);
+      }
+
+      logAxiosDebug("[api] received 304 without cached response", error, {
+        path: requestPath,
+        url: originalRequest.url,
+        params: originalRequest.params,
+        cacheKey,
+      });
+    }
+
+    if (
       error.response?.status !== 401 ||
       !originalRequest ||
       originalRequest._retry ||
       originalRequest.url?.includes(REFRESH_ENDPOINT) ||
-      isPublicEndpointPath(requestPath)
+      isPublicEndpointPath(requestPath) ||
+      isAuthEndpointPath(requestPath)
     ) {
+      logAxiosDebug("[api] request rejected", error, {
+        path: requestPath,
+        url: originalRequest?.url,
+        params: originalRequest?.params,
+      });
+
       return Promise.reject(error);
     }
 
     originalRequest._retry = true;
 
     try {
-      const refreshResponse = await axios.post<ApiResponse<RefreshTokenData>>(
-        `${API_BASE_URL}${REFRESH_ENDPOINT}`,
-        {},
-        { withCredentials: true }
-      );
+      await refreshAxiosSession();
 
-      const tokenCandidate =
-        refreshResponse.data?.data?.accessToken ??
-        refreshResponse.data?.data?.token;
-      const newAccessToken =
-        typeof tokenCandidate === "string" ? tokenCandidate.trim() : "";
-
-      if (!newAccessToken) {
-        throw new Error("Не вдалося оновити токен сесії");
-      }
-
-      setAccessToken(newAccessToken);
-
-      originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
       return api(originalRequest);
     } catch (refreshError) {
-      clearAccessToken();
-      clearRole();
+      logAxiosDebug("[api] refresh retry failed", refreshError, {
+        path: requestPath,
+        url: originalRequest.url,
+        params: originalRequest.params,
+      });
+
       return Promise.reject(refreshError);
     }
   }

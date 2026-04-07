@@ -3,12 +3,21 @@ import "server-only";
 import axios, { type AxiosInstance } from "axios";
 import { cookies, headers } from "next/headers";
 import type { ApiResponse, Pagination } from "@/types/api";
+import type { User } from "@/types/auth";
 import type { Category, CategoriesData } from "@/types/category";
 import type { Product } from "@/types/product";
 import { normalizeProductCore } from "@/services/api";
 
+const normalizeApiBaseUrl = (rawUrl: string): string => {
+  const trimmed = rawUrl.replace(/\/+$/, "");
+  return trimmed.replace(/\/api$/i, "");
+};
+
 const DEFAULT_APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const BACKEND_BASE_URL = normalizeApiBaseUrl(
+  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
+);
 const PROXY_PREFIX = "/api/proxy";
 const SERVER_TIMEOUT_MS = 15_000;
 const CATEGORIES_CACHE_TTL_MS = 5 * 60_000;
@@ -28,6 +37,14 @@ interface CacheEntry<T> {
 }
 
 type ProductsSSRResult = { products: Product[]; pagination: Pagination | null };
+
+const normalizeServerUser = (
+  raw: User & { _id?: string; name?: string }
+): User => ({
+  ...raw,
+  id: raw.id ?? raw._id ?? "",
+  firstName: raw.firstName ?? raw.name,
+});
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   Boolean(value) && typeof value === "object" && !Array.isArray(value);
@@ -398,16 +415,7 @@ const normalizeCategories = (raw: unknown): Category[] => {
             title: subcategory.title,
           };
         })
-        .filter(
-          (
-            entry
-          ): entry is {
-            id: string;
-            _id?: string;
-            name: string;
-            title?: string;
-          } => entry !== null
-        );
+        .filter((entry) => entry !== null);
 
       return links.length > 0 ? [{ name: "Підкатегорії", links }] : [];
     };
@@ -455,6 +463,51 @@ const mergeCategories = (...groups: Category[][]): Category[] => {
 
   return merged;
 };
+
+export async function getUser(): Promise<User | null> {
+  const cookieStore = await cookies();
+  const cookieHeader = cookieStore.toString();
+
+  if (!cookieHeader) {
+    return null;
+  }
+
+  const response = await fetch(`${BACKEND_BASE_URL}/api/auth/me`, {
+    method: "GET",
+    headers: {
+      Accept: "application/json",
+      Cookie: cookieHeader,
+    },
+    cache: "no-store",
+  });
+
+  if (response.status === 401 || response.status === 403) {
+    return null;
+  }
+
+  if (!response.ok) {
+    return null;
+  }
+
+  let payload: unknown = null;
+
+  try {
+    payload = await response.json();
+  } catch {
+    payload = null;
+  }
+
+  const data =
+    payload && typeof payload === "object" && "data" in payload
+      ? (payload as { data?: User & { _id?: string; name?: string } }).data
+      : (payload as (User & { _id?: string; name?: string }) | null);
+
+  if (!data || typeof data !== "object") {
+    return null;
+  }
+
+  return normalizeServerUser(data);
+}
 
 export async function getProductsSSR(params?: {
   page?: number;

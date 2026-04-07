@@ -5,18 +5,58 @@ import {
   Trash2,
   Shield,
   User as UserIcon,
+  Edit2,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { type FormEvent, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "sonner";
+
+import { Button } from "@/components/UI/Button/Button";
+import { FormInput } from "@/components/UI/FormInput/FormInput";
+import { Modal } from "@/components/UI/Modal/Modal";
 import { apiClient } from "@/services/apiClient";
 import type { AppUser } from "@/types/app";
 import styles from "./Users.module.css";
 
+type AdminUser = AppUser & {
+  phone?: string;
+};
+
+type UserFormState = {
+  name: string;
+  email: string;
+  phone: string;
+  role: AdminUser["role"];
+};
+
 export const Users = () => {
-  const [users, setUsers] = useState<AppUser[]>([]);
+  const [users, setUsers] = useState<AdminUser[]>([]);
+  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [formState, setFormState] = useState<UserFormState>({
+    name: "",
+    email: "",
+    phone: "",
+    role: "user",
+  });
+
+  const updateFormState = <K extends keyof UserFormState>(
+    key: K,
+    value: UserFormState[K]
+  ) => {
+    setFormState((prev) => ({ ...prev, [key]: value }));
+  };
 
   const handleDeleteUser = async (id: string) => {
+    const shouldDelete = window.confirm(
+      "Видалити цього користувача? Дію неможливо скасувати."
+    );
+
+    if (!shouldDelete) {
+      return;
+    }
+
     try {
       await apiClient.delete(`/api/users/${id}`);
       setUsers((prev) => prev.filter((item) => item.id !== id));
@@ -29,15 +69,19 @@ export const Users = () => {
   useEffect(() => {
     const loadUsers = async () => {
       try {
-        const response = await apiClient.get("/api/users");
+        const response = await apiClient.get("/api/users", {
+          params: { _ts: Date.now() },
+        });
         const payload = response.data as
-          | { users?: unknown[]; data?: { users?: unknown[] } }
+          | { users?: unknown[]; data?: { users?: unknown[] } | unknown[] }
           | unknown[];
 
         const rawUsers = Array.isArray(payload)
           ? payload
           : Array.isArray(payload.users)
           ? payload.users
+          : Array.isArray(payload.data)
+          ? payload.data
           : Array.isArray(payload.data?.users)
           ? payload.data.users
           : [];
@@ -55,6 +99,7 @@ export const Users = () => {
                 name?: string;
                 firstName?: string;
                 email?: string;
+                phone?: string;
                 role?: "admin" | "user" | "customer" | "moderator";
                 createdAt?: string;
                 date?: string;
@@ -71,19 +116,91 @@ export const Users = () => {
                 id,
                 name,
                 email: raw.email,
+                phone: raw.phone,
                 role: raw.role ?? "user",
                 date: raw.date ?? raw.createdAt ?? new Date().toISOString(),
               } satisfies AppUser;
             })
-            .filter((value): value is AppUser => value !== null)
+            .filter((value): value is AdminUser => value !== null)
         );
       } catch {
         setUsers([]);
+        toast.error("Не вдалося завантажити користувачів");
       }
     };
 
     void loadUsers();
   }, []);
+
+  const openEditModal = (user: AdminUser) => {
+    setEditingUser(user);
+    setFormState({
+      name: user.name,
+      email: user.email,
+      phone: user.phone ?? "",
+      role: user.role,
+    });
+    setIsModalOpen(true);
+  };
+
+  const handleSaveUser = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!editingUser) {
+      return;
+    }
+
+    setIsSaving(true);
+
+    try {
+      const response = await apiClient.put(`/api/users/${editingUser.id}`, {
+        name: formState.name.trim(),
+        email: formState.email.trim(),
+        phone: formState.phone.trim(),
+        role: formState.role,
+      });
+
+      const payload = response.data as {
+        data?: {
+          id?: string;
+          _id?: string;
+          name?: string;
+          email?: string;
+          phone?: string;
+          role?: AdminUser["role"];
+          createdAt?: string;
+        };
+      };
+
+      const updated = payload.data;
+
+      if (updated) {
+        setUsers((prev) =>
+          prev.map((item) =>
+            item.id === editingUser.id
+              ? {
+                  ...item,
+                  id: updated.id ?? updated._id ?? item.id,
+                  name: updated.name ?? item.name,
+                  email: updated.email ?? item.email,
+                  phone: updated.phone ?? item.phone,
+                  role: updated.role ?? item.role,
+                  date: updated.createdAt ?? item.date,
+                }
+              : item
+          )
+        );
+      }
+
+      toast.success("Користувача оновлено");
+      setIsModalOpen(false);
+      setEditingUser(null);
+    } catch {
+      toast.error("Не вдалося оновити користувача");
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className={styles.container}>
@@ -141,20 +258,31 @@ export const Users = () => {
                     {new Date(user.date).toLocaleDateString("uk-UA")}
                   </td>
                   <td className={styles.td}>
-                    <button
-                      onClick={() => void handleDeleteUser(user.id)}
-                      disabled={user.role === "admin"}
-                      className={`${styles.actionBtn} ${
-                        user.role === "admin" ? styles.actionBtnDisabled : ""
-                      }`}
-                      title={
-                        user.role === "admin"
-                          ? "Неможливо видалити адміністратора"
-                          : "Видалити"
-                      }
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                    <div className={styles.actions}>
+                      <button
+                        type="button"
+                        onClick={() => openEditModal(user)}
+                        className={`${styles.actionBtn} ${styles.editBtn}`}
+                        title="Редагувати"
+                      >
+                        <Edit2 size={18} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleDeleteUser(user.id)}
+                        disabled={user.role === "admin"}
+                        className={`${styles.actionBtn} ${
+                          user.role === "admin" ? styles.actionBtnDisabled : ""
+                        }`}
+                        title={
+                          user.role === "admin"
+                            ? "Неможливо видалити адміністратора"
+                            : "Видалити"
+                        }
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                    </div>
                   </td>
                 </motion.tr>
               ))}
@@ -162,6 +290,63 @@ export const Users = () => {
           </tbody>
         </table>
       </div>
+
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => {
+          setIsModalOpen(false);
+          setEditingUser(null);
+        }}
+        title="Редагування користувача"
+      >
+        <form className={styles.form} onSubmit={handleSaveUser}>
+          <FormInput
+            label="Ім'я"
+            value={formState.name}
+            onChange={(e) => updateFormState("name", e.target.value)}
+            required
+          />
+          <FormInput
+            label="Email"
+            type="email"
+            value={formState.email}
+            onChange={(e) => updateFormState("email", e.target.value)}
+            required
+          />
+          <FormInput
+            label="Телефон"
+            value={formState.phone}
+            onChange={(e) => updateFormState("phone", e.target.value)}
+          />
+          <label className={styles.fieldGroup}>
+            <span className={styles.label}>Роль</span>
+            <select
+              className={styles.select}
+              value={formState.role}
+              onChange={(e) =>
+                updateFormState("role", e.target.value as UserFormState["role"])
+              }
+            >
+              <option value="user">Користувач</option>
+              <option value="customer">Клієнт</option>
+              <option value="moderator">Модератор</option>
+              <option value="admin">Адміністратор</option>
+            </select>
+          </label>
+          <div className={styles.modalActions}>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => setIsModalOpen(false)}
+            >
+              Скасувати
+            </Button>
+            <Button type="submit" disabled={isSaving}>
+              {isSaving ? "Збереження..." : "Зберегти"}
+            </Button>
+          </div>
+        </form>
+      </Modal>
     </div>
   );
 };

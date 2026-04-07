@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { createJSONStorage, persist } from "zustand/middleware";
 
 import type { AppProduct } from "@/types/app";
 
@@ -54,6 +54,7 @@ export const useCartStore = create<CartStore>()(
     }),
     {
       name: "budleader-cart-store",
+      storage: createJSONStorage(() => sessionStorage),
     }
   )
 );

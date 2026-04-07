@@ -1,0 +1,28 @@
+.button {
+  width: 44px;
+  height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--background);
+  color: var(--foreground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+}
+
+.button:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.button:active {
+  transform: scale(0.97);
+}
+
+@media only screen and (min-width: 1440px) {
+  .button {
+    display: none;
+  }
+}
