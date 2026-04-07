@@ -19,7 +19,11 @@ export function BurgerButton({ isOpen, onClick }: BurgerButtonProps) {
       aria-expanded={isOpen}
       aria-controls="mobile-menu"
     >
-      {isOpen ? <X size={22} /> : <Menu size={22} />}
+      {isOpen ? (
+        <X className={styles.icon} />
+      ) : (
+        <Menu className={styles.icon} />
+      )}
     </button>
   );
 }

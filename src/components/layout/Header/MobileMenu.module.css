@@ -26,31 +26,37 @@
 
 .header {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
 }
 
-.eyebrow {
-  margin: 0 0 6px;
-  font-size: 12px;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  color: #64748b;
-}
-
-.title {
-  margin: 0;
+.brandLink {
+  display: inline-flex;
+  align-items: baseline;
+  text-decoration: none;
   font-size: 28px;
   font-weight: 800;
+  line-height: 1;
   color: #0f172a;
 }
 
+.brandText {
+  color: #0f172a;
+}
+
+.brandAccent {
+  margin-left: 4px;
+  color: var(--primary);
+  font-style: italic;
+}
+
 .closeButton {
-  width: 40px;
-  height: 40px;
-  border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 12px;
+  width: 24px;
+  height: 24px;
+  /* border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 12px; */
+  border: none;
   background: rgba(255, 255, 255, 0.82);
   color: #0f172a;
   display: inline-flex;
@@ -60,6 +66,11 @@
   transition: transform 0.24s cubic-bezier(0.4, 0, 0.2, 1),
     background-color 0.24s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.24s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.closeButton :global(svg) {
+  width: 18px;
+  height: 18px;
 }
 
 .closeButton:hover {
@@ -72,12 +83,6 @@
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.quickActions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
 }
 
 .quickAction,
@@ -147,7 +152,7 @@
   padding: 14px 14px;
   color: #0f172a;
   text-decoration: none;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 600;
   border: 1px solid rgba(226, 232, 240, 0.9);
   border-radius: 16px;
@@ -245,7 +250,7 @@
 
 .contactLink {
   color: #0f172a;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   text-decoration: none;
   transition: color 0.24s cubic-bezier(0.4, 0, 0.2, 1);
@@ -265,5 +270,39 @@
   .overlay,
   .drawer {
     display: none;
+  }
+}
+
+@media only screen and (min-width: 768px) and (max-width: 1439px) {
+  .closeButton {
+    width: 32px;
+    height: 32px;
+    border-radius: 10px;
+  }
+
+  .closeButton :global(svg) {
+    width: 32px;
+    height: 32px;
+  }
+
+  .link {
+    font-size: 18px;
+  }
+
+  .contactLink {
+    font-size: 18px;
+  }
+}
+
+@media only screen and (max-width: 767px) {
+  .closeButton {
+    width: 24px;
+    height: 24px;
+    border-radius: 8px;
+  }
+
+  .closeButton :global(svg) {
+    width: 24px;
+    height: 24px;
   }
 }

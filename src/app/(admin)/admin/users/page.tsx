@@ -9,7 +9,7 @@ import {
 } from "lucide-react";
 import { type FormEvent, useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 
 import { Button } from "@/components/UI/Button/Button";
 import { FormInput } from "@/components/UI/FormInput/FormInput";
@@ -87,41 +87,41 @@ export const Users = () => {
           : [];
 
         setUsers(
-          rawUsers
-            .map((item) => {
-              if (!item || typeof item !== "object") {
-                return null;
-              }
+          rawUsers.reduce<AdminUser[]>((accumulator, item) => {
+            if (!item || typeof item !== "object") {
+              return accumulator;
+            }
 
-              const raw = item as {
-                id?: string;
-                _id?: string;
-                name?: string;
-                firstName?: string;
-                email?: string;
-                phone?: string;
-                role?: "admin" | "user" | "customer" | "moderator";
-                createdAt?: string;
-                date?: string;
-              };
+            const raw = item as {
+              id?: string;
+              _id?: string;
+              name?: string;
+              firstName?: string;
+              email?: string;
+              phone?: string;
+              role?: "admin" | "user" | "customer" | "moderator";
+              createdAt?: string;
+              date?: string;
+            };
 
-              const id = raw.id ?? raw._id;
-              const name = raw.name ?? raw.firstName;
+            const id = raw.id ?? raw._id;
+            const name = raw.name ?? raw.firstName;
 
-              if (!id || !name || !raw.email) {
-                return null;
-              }
+            if (!id || !name || !raw.email) {
+              return accumulator;
+            }
 
-              return {
-                id,
-                name,
-                email: raw.email,
-                phone: raw.phone,
-                role: raw.role ?? "user",
-                date: raw.date ?? raw.createdAt ?? new Date().toISOString(),
-              } satisfies AppUser;
-            })
-            .filter((value): value is AdminUser => value !== null)
+            accumulator.push({
+              id,
+              name,
+              email: raw.email,
+              phone: raw.phone,
+              role: raw.role ?? "user",
+              date: raw.date ?? raw.createdAt ?? new Date().toISOString(),
+            });
+
+            return accumulator;
+          }, [])
         );
       } catch {
         setUsers([]);

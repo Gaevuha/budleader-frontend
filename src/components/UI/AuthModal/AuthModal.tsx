@@ -1,9 +1,9 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 import { useRouter } from "next/navigation";
 import styles from "./AuthModal.module.css";
 
@@ -58,11 +58,44 @@ export const AuthModal = () => {
     registerMutation.error,
   ]);
 
-  if (!isOpen) return null;
-
   const closeModal = () => {
     close();
   };
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const { body } = document;
+    const previousOverflow = body.style.overflow;
+
+    body.style.overflow = "hidden";
+
+    return () => {
+      body.style.overflow = previousOverflow;
+    };
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [close, isOpen]);
+
+  if (!isOpen) return null;
 
   const redirectAfterAuth = (role?: string) => {
     close();
@@ -129,14 +162,20 @@ export const AuthModal = () => {
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         exit={{ opacity: 0 }}
+        onClick={closeModal}
       >
         <motion.div
           className={styles.modal}
           initial={{ y: 50, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 50, opacity: 0 }}
+          onClick={(event) => event.stopPropagation()}
         >
-          <button className={styles.closeBtn} onClick={closeModal}>
+          <button
+            type="button"
+            className={styles.closeBtn}
+            onClick={closeModal}
+          >
             <X size={24} />
           </button>
 

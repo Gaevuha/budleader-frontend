@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Package, Search, Filter, Edit, Trash2, Eye } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 
 import { Modal } from "@/components/UI/Modal/Modal";
 import { apiFetch } from "@/services/api";

@@ -1,10 +1,10 @@
 .button {
-  width: 44px;
-  height: 44px;
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  border-radius: 0;
   background: var(--background);
-  color: var(--foreground);
+  color: var(--primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -19,6 +19,30 @@
 
 .button:active {
   transform: scale(0.97);
+}
+
+.button:focus,
+.button:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.icon {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2;
+}
+
+@media only screen and (min-width: 768px) and (max-width: 1439px) {
+  .button {
+    width: 32px;
+    height: 32px;
+  }
+
+  .icon {
+    width: 32px;
+    height: 32px;
+  }
 }
 
 @media only screen and (min-width: 1440px) {

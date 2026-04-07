@@ -4,7 +4,7 @@ import { type FormEvent, useEffect, useRef, useState } from "react";
 import { Package, Trash2, Edit2, Plus } from "lucide-react";
 import Image from "next/image";
 import { motion } from "framer-motion";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 
 import { Button } from "@/components/UI/Button/Button";
 import { FormInput } from "@/components/UI/FormInput/FormInput";

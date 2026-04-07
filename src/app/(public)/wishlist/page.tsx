@@ -39,18 +39,19 @@ const WishlistPage = () => {
             </Link>
           </div>
         ) : (
-          <div className={styles.grid}>
+          <ul className={styles.grid}>
             {wishlist.map((product) => (
-              <motion.div
+              <motion.li
                 key={product.id}
+                className={styles.gridItem}
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9 }}
               >
                 <ProductCard product={product} />
-              </motion.div>
+              </motion.li>
             ))}
-          </div>
+          </ul>
         )}
       </Container>
     </section>

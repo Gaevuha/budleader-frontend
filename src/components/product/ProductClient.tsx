@@ -5,7 +5,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { Heart, Send, ShoppingCart, Star } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 
 import type { AppProduct, ProductReview } from "@/types/app";
 import type { Product } from "@/types/product";

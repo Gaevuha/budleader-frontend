@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 
 import { Container } from "@/components/layout/Container/Container";
 import { Button } from "@/components/UI/Button/Button";

@@ -6,7 +6,7 @@ import { Settings, Save } from "lucide-react";
 import { Button } from "@/components/UI/Button/Button";
 import { FormInput } from "@/components/UI/FormInput/FormInput";
 import { apiFetch, getApiErrorMessage } from "@/services/api";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 import styles from "./SettingsPage.module.css";
 
 type AdminSettings = {

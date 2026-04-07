@@ -322,47 +322,47 @@ const normalizeProductReviewsPayload = (payload: unknown): ProductReview[] => {
     ? source.data.reviews
     : [];
 
-  return rows
-    .map((item) => {
-      if (!item || typeof item !== "object") {
-        return null;
-      }
+  return rows.reduce<ProductReview[]>((accumulator, item) => {
+    if (!item || typeof item !== "object") {
+      return accumulator;
+    }
 
-      const review = item as {
-        id?: string;
-        _id?: string;
-        user?: string | { name?: string; email?: string };
-        guestName?: string;
-        text?: string;
-        comment?: string;
-        createdAt?: string;
-        date?: string;
-        rating?: number;
-      };
+    const review = item as {
+      id?: string;
+      _id?: string;
+      user?: string | { name?: string; email?: string };
+      guestName?: string;
+      text?: string;
+      comment?: string;
+      createdAt?: string;
+      date?: string;
+      rating?: number;
+    };
 
-      const id = review.id ?? review._id;
-      if (!id) {
-        return null;
-      }
+    const id = review.id ?? review._id;
+    if (!id) {
+      return accumulator;
+    }
 
-      return {
-        id,
-        user:
-          typeof review.user === "string"
-            ? review.user
-            : review.user?.name ??
-              review.user?.email ??
-              review.guestName ??
-              "Користувач",
-        text: review.comment ?? review.text ?? "",
-        date: review.createdAt ?? review.date ?? new Date().toISOString(),
-        rating:
-          typeof review.rating === "number" && Number.isFinite(review.rating)
-            ? review.rating
-            : undefined,
-      } satisfies ProductReview;
-    })
-    .filter((item): item is ProductReview => item !== null);
+    accumulator.push({
+      id,
+      user:
+        typeof review.user === "string"
+          ? review.user
+          : review.user?.name ??
+            review.user?.email ??
+            review.guestName ??
+            "Користувач",
+      text: review.comment ?? review.text ?? "",
+      date: review.createdAt ?? review.date ?? new Date().toISOString(),
+      rating:
+        typeof review.rating === "number" && Number.isFinite(review.rating)
+          ? review.rating
+          : undefined,
+    });
+
+    return accumulator;
+  }, []);
 };
 
 const normalizeProductReviewsResult = (
@@ -629,90 +629,90 @@ const normalizeOrdersPayload = (payload: unknown): OrdersResult => {
     ? raw.orders
     : [];
 
-  const orders = rawOrders
-    .map((entry) => {
-      if (!entry || typeof entry !== "object") {
-        return null;
-      }
+  const orders = rawOrders.reduce<Order[]>((accumulator, entry) => {
+    if (!entry || typeof entry !== "object") {
+      return accumulator;
+    }
 
-      const order = entry as Record<string, unknown>;
-      const id =
-        (order.id as string | undefined) ??
-        (order._id as string | undefined) ??
-        "";
+    const order = entry as Record<string, unknown>;
+    const id =
+      (order.id as string | undefined) ??
+      (order._id as string | undefined) ??
+      "";
 
-      if (!id) {
-        return null;
-      }
+    if (!id) {
+      return accumulator;
+    }
 
-      const rawItems = Array.isArray(order.items) ? order.items : [];
+    const rawItems = Array.isArray(order.items) ? order.items : [];
 
-      const items = rawItems
-        .map((item) => {
-          if (!item || typeof item !== "object") {
-            return null;
-          }
+    const items = rawItems
+      .map((item) => {
+        if (!item || typeof item !== "object") {
+          return null;
+        }
 
-          const record = item as Record<string, unknown>;
-          const product =
-            record.product && typeof record.product === "object"
-              ? (record.product as Record<string, unknown>)
-              : null;
-          const productId =
-            (product?._id as string | undefined) ??
-            (product?.id as string | undefined) ??
-            (record.productId as string | undefined);
-          const image =
-            (product?.mainImage as string | undefined) ??
-            (product?.image as string | undefined);
-          const quantity = Number(record.quantity ?? 1);
-          const price = Number(record.price ?? 0);
-          const total = Number(record.total ?? quantity * price);
+        const record = item as Record<string, unknown>;
+        const product =
+          record.product && typeof record.product === "object"
+            ? (record.product as Record<string, unknown>)
+            : null;
+        const productId =
+          (product?._id as string | undefined) ??
+          (product?.id as string | undefined) ??
+          (record.productId as string | undefined);
+        const image =
+          (product?.mainImage as string | undefined) ??
+          (product?.image as string | undefined);
+        const quantity = Number(record.quantity ?? 1);
+        const price = Number(record.price ?? 0);
+        const total = Number(record.total ?? quantity * price);
 
-          return {
-            id:
-              (record.id as string | undefined) ??
-              productId ??
-              crypto.randomUUID(),
-            productId,
-            name:
-              (record.name as string | undefined) ??
-              (product?.name as string | undefined) ??
-              "Товар без назви",
-            quantity: Number.isFinite(quantity) ? quantity : 1,
-            price: Number.isFinite(price) ? price : 0,
-            total: Number.isFinite(total) ? total : 0,
-            image,
-          };
-        })
-        .filter((item): item is NonNullable<typeof item> => item !== null);
+        return {
+          id:
+            (record.id as string | undefined) ??
+            productId ??
+            crypto.randomUUID(),
+          productId,
+          name:
+            (record.name as string | undefined) ??
+            (product?.name as string | undefined) ??
+            "Товар без назви",
+          quantity: Number.isFinite(quantity) ? quantity : 1,
+          price: Number.isFinite(price) ? price : 0,
+          total: Number.isFinite(total) ? total : 0,
+          image,
+        };
+      })
+      .filter((item): item is NonNullable<typeof item> => item !== null);
 
-      return {
-        id,
-        status: normalizeOrderStatus(order.status),
-        total: Number(order.total ?? 0),
-        subtotal: Number.isFinite(Number(order.subtotal))
-          ? Number(order.subtotal)
+    accumulator.push({
+      id,
+      status: normalizeOrderStatus(order.status),
+      total: Number(order.total ?? 0),
+      subtotal: Number.isFinite(Number(order.subtotal))
+        ? Number(order.subtotal)
+        : undefined,
+      deliveryCost: Number.isFinite(Number(order.deliveryCost))
+        ? Number(order.deliveryCost)
+        : undefined,
+      paymentMethod:
+        typeof order.paymentMethod === "string"
+          ? order.paymentMethod
           : undefined,
-        deliveryCost: Number.isFinite(Number(order.deliveryCost))
-          ? Number(order.deliveryCost)
+      deliveryMethod:
+        typeof order.deliveryMethod === "string"
+          ? order.deliveryMethod
           : undefined,
-        paymentMethod:
-          typeof order.paymentMethod === "string"
-            ? order.paymentMethod
-            : undefined,
-        deliveryMethod:
-          typeof order.deliveryMethod === "string"
-            ? order.deliveryMethod
-            : undefined,
-        items,
-        createdAt:
-          typeof order.createdAt === "string" ? order.createdAt : undefined,
-        updatedAt:
-          typeof order.updatedAt === "string" ? order.updatedAt : undefined,
-      } satisfies Order;
-    })
-    .filter((item): item is Order => item !== null);
+      items,
+      createdAt:
+        typeof order.createdAt === "string" ? order.createdAt : undefined,
+      updatedAt:
+        typeof order.updatedAt === "string" ? order.updatedAt : undefined,
+    });
+
+    return accumulator;
+  }, []);
 
   const rawPagination =
     nested.pagination && typeof nested.pagination === "object"

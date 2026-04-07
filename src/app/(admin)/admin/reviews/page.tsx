@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { MessageSquare, CheckCircle2, Send } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 
 import { apiClient } from "@/services/apiClient";
 import styles from "../users/Users.module.css";

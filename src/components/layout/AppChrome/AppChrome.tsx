@@ -6,7 +6,7 @@ import { usePathname } from "next/navigation";
 import { Header } from "@/components/layout/Header/Header";
 import { Footer } from "@/components/layout/Footer/Footer";
 import { AuthModal } from "@/components/UI/AuthModal/AuthModal";
-import { Toaster } from "@/components/UI/sonner/sonner";
+import { NotificationCenter } from "@/components/UI/notifications/NotificationCenter";
 import type { Category } from "@/types/category";
 import styles from "@/app/layout.module.css";
 
@@ -21,7 +21,7 @@ export function AppChrome({ children, categories }: AppChromeProps) {
 
   return (
     <div className={styles.layout}>
-      <Toaster position="bottom-right" richColors />
+      <NotificationCenter variant={isAdminRoute ? "admin" : "public"} />
       <AuthModal />
       {!isAdminRoute ? <Header categories={categories} /> : null}
       <main className={styles.main}>{children}</main>

@@ -288,9 +288,9 @@ export default function CartPage() {
       <h1 className={styles.pageTitle}>Кошик</h1>
 
       <div className={styles.layout}>
-        <div className={styles.itemsList}>
+        <ul className={styles.itemsList}>
           {cart.map((item) => (
-            <div key={item.id} className={styles.cartItem}>
+            <li key={item.id} className={styles.cartItem}>
               <div className={styles.itemImageWrapper}>
                 <Image
                   src={item.image || FALLBACK_IMAGE}
@@ -328,14 +328,15 @@ export default function CartPage() {
               </div>
 
               <button
+                type="button"
                 className={styles.removeBtn}
                 onClick={() => handleRemoveItem(item.productId)}
               >
                 x
               </button>
-            </div>
+            </li>
           ))}
-        </div>
+        </ul>
 
         <div className={styles.summary}>
           <h2 className={styles.summaryTitle}>Ваше замовлення</h2>

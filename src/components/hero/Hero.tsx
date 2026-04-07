@@ -20,7 +20,7 @@ export function Hero() {
       description:
         "Знижки до 50% на популярні товари. Встигніть придбати матеріали за вигідними цінами!",
       cta: "Переглянути акції",
-      link: "/catalog?onSale=true",
+      link: "/#all-sales",
     },
     {
       title: "Професійна консультація",
