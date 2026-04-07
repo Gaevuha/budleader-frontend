@@ -1,27 +1,30 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Container } from "../Container/Container";
 import {
   ShoppingCart,
   User,
-  Menu,
   Search,
   Heart,
   Grid,
   Moon,
   Sun,
+  X,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CatalogDropdown } from "../../UI/CatalogDropdown/CatalogDropdown";
 import { useLogout, useUser } from "@/queries/authQueries";
 import type { Category } from "@/types/category";
+import { useBreakpoint } from "@/hooks/useBreakpoint";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
 import { useUIStore } from "@/store/ui/uiStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
+import { BurgerButton } from "./BurgerButton";
+import { MobileMenu } from "./MobileMenu";
 import styles from "./Header.module.css";
 
 interface HeaderProps {
@@ -29,7 +32,9 @@ interface HeaderProps {
 }
 
 export const Header = ({ categories }: HeaderProps) => {
+  const pathname = usePathname();
   const router = useRouter();
+  const { isTablet, isDesktop } = useBreakpoint();
   const { data: currentUser } = useUser();
   const logoutMutation = useLogout();
   const openAuthModal = useAuthModalStore((state) => state.open);
@@ -38,18 +43,91 @@ export const Header = ({ categories }: HeaderProps) => {
   const cart = useCartStore((state) => state.cart);
   const wishlist = useWishlistStore((state) => state.wishlist);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchDirty, setIsSearchDirty] = useState(false);
+  const compactSearchInputRef = useRef<HTMLInputElement | null>(null);
+  const isCompactHeader = !isDesktop;
+
+  const closeMobileMenu = () => {
+    setIsMobileMenuOpen(false);
+  };
+
+  const closeSearchPanel = () => {
+    setIsSearchPanelOpen(false);
+  };
 
   const handleThemeToggle = () => {
     toggleTheme();
   };
 
   const handleLogout = async () => {
+    closeMobileMenu();
     await logoutMutation.mutateAsync();
     router.push("/");
     router.refresh();
   };
+
+  useEffect(() => {
+    const frameId = window.requestAnimationFrame(() => {
+      closeMobileMenu();
+      closeSearchPanel();
+      setIsCatalogOpen(false);
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!isCompactHeader) {
+      const frameId = window.requestAnimationFrame(() => {
+        setIsMobileMenuOpen(false);
+        setIsSearchPanelOpen(false);
+      });
+
+      return () => {
+        window.cancelAnimationFrame(frameId);
+      };
+    }
+  }, [isCompactHeader]);
+
+  useEffect(() => {
+    if (!isMobileMenuOpen && !isSearchPanelOpen) {
+      return;
+    }
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setIsMobileMenuOpen(false);
+        setIsSearchPanelOpen(false);
+      }
+    };
+
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+
+    return () => {
+      document.body.style.overflow = "";
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [isMobileMenuOpen, isSearchPanelOpen]);
+
+  useEffect(() => {
+    if (!isSearchPanelOpen) {
+      return;
+    }
+
+    const frameId = window.requestAnimationFrame(() => {
+      compactSearchInputRef.current?.focus();
+    });
+
+    return () => {
+      window.cancelAnimationFrame(frameId);
+    };
+  }, [isSearchPanelOpen]);
 
   const handleWishlistNavigation = (
     event: React.MouseEvent<HTMLAnchorElement>
@@ -70,19 +148,45 @@ export const Header = ({ categories }: HeaderProps) => {
         ? `/catalog?search=${encodeURIComponent(normalized)}`
         : "/catalog";
 
+      if (isCompactHeader && normalized.length > 0) {
+        setIsSearchPanelOpen(false);
+      }
+
       router.replace(nextTarget);
     }, 300);
 
     return () => {
       window.clearTimeout(timeoutId);
     };
-  }, [isSearchDirty, router, searchQuery]);
+  }, [isCompactHeader, isSearchDirty, router, searchQuery]);
 
   const displayName =
     currentUser?.firstName ?? currentUser?.email ?? "Користувач";
   const profileHref =
     currentUser?.role === "admin" ? "/admin/dashboard" : "/profile";
   const cartCount = cart.reduce((acc: number, item) => acc + item.quantity, 0);
+  const shouldShowTabletProfileAction = isTablet;
+
+  const handleProfileAction = () => {
+    if (currentUser) {
+      router.push(profileHref);
+      return;
+    }
+
+    openAuthModal("login");
+  };
+
+  const handleSearchClear = () => {
+    setIsSearchDirty(true);
+    setSearchQuery("");
+    router.replace("/catalog");
+
+    if (isCompactHeader) {
+      window.requestAnimationFrame(() => {
+        compactSearchInputRef.current?.focus();
+      });
+    }
+  };
 
   return (
     <header className={styles.header}>
@@ -143,91 +247,239 @@ export const Header = ({ categories }: HeaderProps) => {
       </div>
 
       <Container>
-        <div className={styles.wrapper}>
-          <button className={styles.mobileMenuBtn}>
-            <Menu size={24} />
-          </button>
-
-          <Link href="/" className={styles.logo}>
-            Буд<span className={styles.primaryText}>Лідер</span>
-          </Link>
-
-          <button
-            className={`${styles.catalogBtn} ${
-              isCatalogOpen ? styles.catalogBtnActive : ""
-            }`}
-            onClick={() => setIsCatalogOpen(!isCatalogOpen)}
-          >
-            <Grid size={20} />
-            <span>КАТАЛОГ ТОВАРІВ</span>
-          </button>
-
-          <div className={styles.searchContainer}>
-            <Search
-              size={20}
-              className={styles.searchIconLeft}
-              aria-hidden="true"
+        {isCompactHeader ? (
+          <div className={styles.compactWrapper}>
+            <BurgerButton
+              isOpen={isMobileMenuOpen}
+              onClick={() => setIsMobileMenuOpen((prev) => !prev)}
             />
-            <input
-              type="text"
-              placeholder="Я шукаю..."
-              className={styles.searchInput}
-              value={searchQuery}
-              onChange={(event) => {
-                setIsSearchDirty(true);
-                setSearchQuery(event.target.value);
-              }}
-            />
-          </div>
 
-          <div className={styles.actions}>
-            {currentUser ? (
-              <Link href={profileHref} className={styles.actionBtn}>
-                <div className={styles.iconWrapper}>
-                  <User size={24} />
-                </div>
-                <span className={styles.actionText}>Профіль</span>
+            <Link href="/" className={styles.logo}>
+              Буд<span className={styles.primaryText}>Лідер</span>
+            </Link>
+
+            <div className={styles.compactActions}>
+              <button
+                type="button"
+                className={styles.iconActionButton}
+                onClick={() => setIsSearchPanelOpen(true)}
+                aria-label="Відкрити пошук"
+              >
+                <Search size={20} />
+              </button>
+
+              {shouldShowTabletProfileAction ? (
+                <button
+                  type="button"
+                  className={styles.iconActionButton}
+                  onClick={handleProfileAction}
+                  aria-label={currentUser ? "Відкрити профіль" : "Увійти"}
+                >
+                  <User size={20} />
+                </button>
+              ) : null}
+
+              <Link
+                href="/wishlist"
+                className={styles.iconActionLink}
+                aria-label="Обране"
+                onClick={handleWishlistNavigation}
+              >
+                <span className={styles.iconWrapper}>
+                  <Heart size={20} />
+                  {wishlist.length > 0 ? (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className={styles.badge}
+                    >
+                      {wishlist.length}
+                    </motion.span>
+                  ) : null}
+                </span>
               </Link>
-            ) : null}
 
-            <Link
-              href="/wishlist"
-              className={styles.actionBtn}
-              onClick={handleWishlistNavigation}
-            >
-              <div className={styles.iconWrapper}>
-                <Heart size={24} />
-                {wishlist.length > 0 && (
-                  <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className={styles.badge}
-                  >
-                    {wishlist.length}
-                  </motion.span>
-                )}
-              </div>
-              <span className={styles.actionText}>Обране</span>
-            </Link>
-
-            <Link href="/cart" className={styles.actionBtn}>
-              <div className={styles.iconWrapper}>
-                <ShoppingCart size={24} />
-                {cartCount > 0 && (
-                  <motion.span
-                    initial={{ scale: 0 }}
-                    animate={{ scale: 1 }}
-                    className={styles.badge}
-                  >
-                    {cartCount}
-                  </motion.span>
-                )}
-              </div>
-              <span className={styles.actionText}>Кошик</span>
-            </Link>
+              <Link
+                href="/cart"
+                className={styles.iconActionLink}
+                aria-label="Кошик"
+              >
+                <span className={styles.iconWrapper}>
+                  <ShoppingCart size={20} />
+                  {cartCount > 0 ? (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className={styles.badge}
+                    >
+                      {cartCount}
+                    </motion.span>
+                  ) : null}
+                </span>
+              </Link>
+            </div>
           </div>
-        </div>
+        ) : (
+          <div className={styles.wrapper}>
+            <Link href="/" className={styles.logo}>
+              Буд<span className={styles.primaryText}>Лідер</span>
+            </Link>
+
+            <button
+              className={`${styles.catalogBtn} ${
+                isCatalogOpen ? styles.catalogBtnActive : ""
+              }`}
+              onClick={() => setIsCatalogOpen(!isCatalogOpen)}
+            >
+              <Grid size={20} />
+              <span>КАТАЛОГ ТОВАРІВ</span>
+            </button>
+
+            <div className={styles.searchContainer}>
+              <div className={styles.searchField}>
+                <Search
+                  size={20}
+                  className={styles.searchIconLeft}
+                  aria-hidden="true"
+                />
+                <input
+                  type="text"
+                  placeholder="Я шукаю..."
+                  className={styles.searchInput}
+                  value={searchQuery}
+                  onChange={(event) => {
+                    setIsSearchDirty(true);
+                    setSearchQuery(event.target.value);
+                  }}
+                />
+                {searchQuery.length > 0 ? (
+                  <button
+                    type="button"
+                    className={styles.searchClearButton}
+                    onClick={handleSearchClear}
+                    aria-label="Очистити пошук"
+                  >
+                    <X size={16} />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            <div className={styles.actions}>
+              {currentUser ? (
+                <Link href={profileHref} className={styles.actionBtn}>
+                  <div className={styles.iconWrapper}>
+                    <User size={24} />
+                  </div>
+                  <span className={styles.actionText}>Профіль</span>
+                </Link>
+              ) : null}
+
+              <Link
+                href="/wishlist"
+                className={styles.actionBtn}
+                onClick={handleWishlistNavigation}
+              >
+                <div className={styles.iconWrapper}>
+                  <Heart size={24} />
+                  {wishlist.length > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className={styles.badge}
+                    >
+                      {wishlist.length}
+                    </motion.span>
+                  )}
+                </div>
+                <span className={styles.actionText}>Обране</span>
+              </Link>
+
+              <Link href="/cart" className={styles.actionBtn}>
+                <div className={styles.iconWrapper}>
+                  <ShoppingCart size={24} />
+                  {cartCount > 0 && (
+                    <motion.span
+                      initial={{ scale: 0 }}
+                      animate={{ scale: 1 }}
+                      className={styles.badge}
+                    >
+                      {cartCount}
+                    </motion.span>
+                  )}
+                </div>
+                <span className={styles.actionText}>Кошик</span>
+              </Link>
+            </div>
+          </div>
+        )}
       </Container>
+
+      <AnimatePresence>
+        {isCompactHeader && isSearchPanelOpen ? (
+          <>
+            <motion.button
+              type="button"
+              className={styles.searchBackdrop}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+              aria-label="Закрити пошук"
+              onClick={closeSearchPanel}
+            />
+
+            <motion.div
+              className={styles.searchPanel}
+              initial={{ opacity: 0, y: -18, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -18, scale: 0.98 }}
+              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
+            >
+              <Container>
+                <div className={styles.searchPanelInner}>
+                  <div className={styles.searchField}>
+                    <Search
+                      size={20}
+                      className={styles.searchIconLeft}
+                      aria-hidden="true"
+                    />
+                    <input
+                      ref={compactSearchInputRef}
+                      type="text"
+                      placeholder="Я шукаю..."
+                      className={styles.searchInput}
+                      value={searchQuery}
+                      onChange={(event) => {
+                        setIsSearchDirty(true);
+                        setSearchQuery(event.target.value);
+                      }}
+                    />
+                    {searchQuery.length > 0 ? (
+                      <button
+                        type="button"
+                        className={styles.searchClearButton}
+                        onClick={handleSearchClear}
+                        aria-label="Очистити пошук"
+                      >
+                        <X size={16} />
+                      </button>
+                    ) : null}
+                  </div>
+                  <button
+                    type="button"
+                    className={styles.searchCloseButton}
+                    onClick={closeSearchPanel}
+                    aria-label="Закрити пошук"
+                  >
+                    Закрити
+                  </button>
+                </div>
+              </Container>
+            </motion.div>
+          </>
+        ) : null}
+      </AnimatePresence>
 
       <AnimatePresence>
         {isCatalogOpen && (
@@ -260,6 +512,27 @@ export const Header = ({ categories }: HeaderProps) => {
           />
         )}
       </AnimatePresence>
+
+      {isCompactHeader ? (
+        <MobileMenu
+          cartCount={cartCount}
+          displayName={displayName}
+          isAuthenticated={Boolean(currentUser)}
+          isOpen={isMobileMenuOpen}
+          profileHref={profileHref}
+          theme={theme}
+          wishlistCount={wishlist.length}
+          onClose={closeMobileMenu}
+          onLogin={() => {
+            closeMobileMenu();
+            openAuthModal("login");
+          }}
+          onLogout={() => {
+            void handleLogout();
+          }}
+          onThemeToggle={handleThemeToggle}
+        />
+      ) : null}
     </header>
   );
 };

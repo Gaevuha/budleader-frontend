@@ -6,7 +6,6 @@ import axios, {
   type InternalAxiosRequestConfig,
 } from "axios";
 
-import type { ApiResponse } from "@/types/api";
 import type { AppProduct } from "@/types/app";
 import type { Product } from "@/types/product";
 import { PRODUCT_PLACEHOLDER_SRC, resolveMediaUrl } from "@/utils/media";
@@ -273,12 +272,42 @@ const refreshAuthSession = async (): Promise<void> => {
 
 const refreshAxiosSession = async (): Promise<void> => {
   if (!axiosRefreshPromise) {
-    axiosRefreshPromise = axios
-      .post(`${API_BASE_URL}${REFRESH_ENDPOINT}`, {}, { withCredentials: true })
-      .then(() => undefined)
-      .finally(() => {
-        axiosRefreshPromise = null;
+    axiosRefreshPromise = (async () => {
+      const response = await fetch(REFRESH_ENDPOINT, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          Accept: "application/json",
+          "Content-Type": "application/json",
+        },
+        cache: "no-store",
       });
+
+      const payload = await parseResponseBody(response);
+
+      if (!response.ok) {
+        throw new ApiFetchError(
+          extractApiMessage(payload) ?? "Не вдалося оновити сесію",
+          response.status,
+          payload
+        );
+      }
+
+      const refreshResult =
+        payload && typeof payload === "object"
+          ? (payload as { success?: boolean; message?: string })
+          : null;
+
+      if (refreshResult?.success === false) {
+        throw new ApiFetchError(
+          refreshResult.message ?? "Не вдалося оновити сесію",
+          401,
+          payload
+        );
+      }
+    })().finally(() => {
+      axiosRefreshPromise = null;
+    });
   }
 
   return axiosRefreshPromise;
@@ -517,6 +546,52 @@ const buildLocalRateLimitError = (
   );
 };
 
+const resolveAxiosAdapter = (
+  candidate:
+    | InternalAxiosRequestConfig["adapter"]
+    | AxiosInstance["defaults"]["adapter"]
+): AxiosAdapter | null => {
+  if (!candidate) {
+    return null;
+  }
+
+  if (typeof candidate === "function") {
+    return candidate;
+  }
+
+  try {
+    return axios.getAdapter(candidate);
+  } catch {
+    return null;
+  }
+};
+
+const logAxiosDebug = (
+  label: string,
+  error: unknown,
+  extra?: Record<string, unknown>
+) => {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  const axiosError = axios.isAxiosError(error) ? error : null;
+
+  console.error(label, {
+    ...extra,
+    message:
+      axiosError?.message ??
+      (error instanceof Error ? error.message : String(error)),
+    code: axiosError?.code,
+    status: axiosError?.response?.status,
+    url: axiosError?.config?.url,
+    method: axiosError?.config?.method,
+    params: axiosError?.config?.params,
+    data: axiosError?.response?.data,
+    error,
+  });
+};
+
 export const api: AxiosInstance = axios.create({
   baseURL: API_BASE_URL,
   timeout: API_TIMEOUT_MS,
@@ -541,13 +616,9 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
   const now = Date.now();
   const key = buildGetKey(config);
   const cached = getCache.get(key);
-  const adapterFromConfig = config.adapter;
-  const defaultAdapter = api.defaults.adapter;
   const adapter =
-    (Array.isArray(adapterFromConfig)
-      ? adapterFromConfig[0]
-      : adapterFromConfig) ??
-    (Array.isArray(defaultAdapter) ? defaultAdapter[0] : defaultAdapter);
+    resolveAxiosAdapter(config.adapter) ??
+    resolveAxiosAdapter(api.defaults.adapter);
 
   if (cached && cached.expiresAt > now) {
     config.adapter = async () => cloneResponse(cached.response);
@@ -614,6 +685,35 @@ api.interceptors.response.use(
     const requestPath = toPathname(originalRequest?.url);
 
     if (
+      error.response?.status === 304 &&
+      originalRequest &&
+      isPublicEndpointPath(requestPath)
+    ) {
+      const cacheKey = buildGetKey(originalRequest);
+      const cached = getCache.get(cacheKey);
+
+      if (cached) {
+        if (process.env.NODE_ENV !== "production") {
+          console.info("[api] recovered cached response after 304", {
+            path: requestPath,
+            url: originalRequest.url,
+            params: originalRequest.params,
+            cacheKey,
+          });
+        }
+
+        return cloneResponse(cached.response);
+      }
+
+      logAxiosDebug("[api] received 304 without cached response", error, {
+        path: requestPath,
+        url: originalRequest.url,
+        params: originalRequest.params,
+        cacheKey,
+      });
+    }
+
+    if (
       error.response?.status !== 401 ||
       !originalRequest ||
       originalRequest._retry ||
@@ -621,6 +721,12 @@ api.interceptors.response.use(
       isPublicEndpointPath(requestPath) ||
       isAuthEndpointPath(requestPath)
     ) {
+      logAxiosDebug("[api] request rejected", error, {
+        path: requestPath,
+        url: originalRequest?.url,
+        params: originalRequest?.params,
+      });
+
       return Promise.reject(error);
     }
 
@@ -631,6 +737,12 @@ api.interceptors.response.use(
 
       return api(originalRequest);
     } catch (refreshError) {
+      logAxiosDebug("[api] refresh retry failed", refreshError, {
+        path: requestPath,
+        url: originalRequest.url,
+        params: originalRequest.params,
+      });
+
       return Promise.reject(refreshError);
     }
   }

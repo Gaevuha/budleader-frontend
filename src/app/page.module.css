@@ -1,16 +1,22 @@
 .page {
-  padding-bottom: 64px;
+  padding-bottom: 56px;
+  background: radial-gradient(
+      circle at top left,
+      rgba(22, 163, 74, 0.06),
+      transparent 28%
+    ),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
 }
 
 .heroSection {
   background-color: var(--background);
-  padding: 24px 0 48px;
+  padding: 16px 0 36px;
 }
 
 .heroGrid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 24px;
+  gap: 18px;
   position: relative;
 }
 
@@ -286,6 +292,7 @@
 .heroBannerWrapper {
   display: flex;
   flex-direction: column;
+  min-width: 0;
 }
 
 .heroBanner {
@@ -847,13 +854,14 @@
 
 /* Features */
 .features {
-  margin-bottom: 64px;
+  padding: 12px 0 0;
+  margin-bottom: 48px;
 }
 
 .featuresGrid {
   display: grid;
   grid-template-columns: repeat(1, 1fr);
-  gap: 24px;
+  gap: 14px;
 }
 
 @media only screen and (min-width: 768px) {
@@ -871,12 +879,13 @@
 .featureCard {
   background: white;
   border: 1px solid var(--border);
-  padding: 24px;
-  border-radius: var(--radius);
+  padding: 18px;
+  border-radius: 22px;
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   transition: transform 0.2s, box-shadow 0.2s;
+  min-height: 100%;
 }
 
 .featureCard:hover {
@@ -888,9 +897,13 @@
 .featureIcon {
   color: var(--primary);
   background: rgba(31, 166, 74, 0.1);
-  padding: 12px;
-  border-radius: 50%;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .featureText {
@@ -898,7 +911,7 @@
 }
 
 .featureTitle {
-  font-size: 16px;
+  font-size: 15px;
   font-weight: 700;
   margin: 0 0 4px 0;
   color: var(--foreground);
@@ -908,25 +921,27 @@
   color: #666;
   font-size: 13px;
   margin: 0;
-  line-height: 1.4;
+  line-height: 1.5;
 }
 
 /* Sections */
 .productsSection {
-  margin-bottom: 64px;
+  margin-bottom: 48px;
 }
 
 .sectionHeader {
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: flex-start;
   justify-content: space-between;
-  margin-bottom: 32px;
-  padding-bottom: 16px;
-  border-bottom: 2px solid #f0f0f0;
+  gap: 14px;
+  margin-bottom: 20px;
+  padding-bottom: 14px;
+  border-bottom: 1px solid rgba(226, 232, 240, 0.9);
 }
 
 .sectionTitle {
-  font-size: 28px;
+  font-size: clamp(24px, 5vw, 32px);
   font-weight: 800;
   margin: 0;
   color: var(--foreground);
@@ -936,27 +951,28 @@
 .sectionTitle::after {
   content: "";
   position: absolute;
-  bottom: -18px;
+  bottom: -16px;
   left: 0;
-  height: 2px;
-  width: 60px;
+  height: 3px;
+  width: 48px;
   background-color: var(--primary);
+  border-radius: 999px;
 }
 
 .viewAll {
-  display: flex;
+  display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 6px;
   color: var(--primary);
   text-decoration: none;
   font-weight: 600;
-  font-size: 15px;
-  transition: gap 0.2s;
+  font-size: 14px;
+  transition: gap 0.2s, color 0.2s;
 }
 
 .viewAll:hover {
   gap: 8px;
-  text-decoration: underline;
+  color: var(--primary-hover);
 }
 
 .productGrid {
@@ -965,25 +981,83 @@
   gap: 16px;
 }
 
+@media only screen and (min-width: 560px) {
+  .productGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media only screen and (min-width: 768px) {
+  .page {
+    padding-bottom: 72px;
+  }
+
+  .heroSection {
+    padding: 24px 0 44px;
+  }
+
+  .heroGrid {
+    gap: 24px;
+  }
+
+  .features {
+    margin-bottom: 56px;
+  }
+
   .productGrid {
     grid-template-columns: repeat(3, 1fr);
+    gap: 18px;
+  }
+
+  .featureCard {
+    padding: 22px;
+  }
+
+  .productsSection {
+    margin-bottom: 56px;
+  }
+
+  .sectionHeader {
+    flex-direction: row;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 24px;
     gap: 24px;
   }
 }
 
 @media only screen and (min-width: 1440px) {
+  .page {
+    padding-bottom: 88px;
+  }
+
+  .heroSection {
+    padding: 28px 0 56px;
+  }
+
+  .heroGrid {
+    gap: 28px;
+  }
+
+  .features {
+    margin-bottom: 64px;
+  }
+
+  .productsSection {
+    margin-bottom: 64px;
+  }
+
   .productGrid {
     grid-template-columns: repeat(4, 1fr);
   }
 }
-
 /* Анімації */
 @keyframes float {
   0%,
   100% {
     transform: translate(0, 0);
   }
+
   50% {
     transform: translate(30px, 30px);
   }

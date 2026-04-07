@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getUser } from "@/services/apiServer";
+
 const normalizeApiBaseUrl = (rawUrl: string): string => {
   const trimmed = rawUrl.replace(/\/+$/, "");
   return trimmed.replace(/\/api$/i, "");
@@ -50,6 +52,21 @@ const normalizeOrders = (payload: unknown): Array<{ totalAmount: number }> => {
 };
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
+  const user = await getUser();
+
+  if (!user || user.role !== "admin") {
+    return NextResponse.json(
+      {
+        success: true,
+        data: {
+          stats: [],
+          orders: [],
+        },
+      },
+      { status: 200 }
+    );
+  }
+
   const authorization = request.headers.get("authorization");
   const cookie = request.headers.get("cookie");
 
@@ -87,6 +104,27 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
   ]);
 
   if (!ordersRes.ok || !usersRes.ok || !productsRes.ok) {
+    const unauthorized =
+      ordersRes.status === 401 ||
+      ordersRes.status === 403 ||
+      usersRes.status === 401 ||
+      usersRes.status === 403 ||
+      productsRes.status === 401 ||
+      productsRes.status === 403;
+
+    if (unauthorized) {
+      return NextResponse.json(
+        {
+          success: true,
+          data: {
+            stats: [],
+            orders: [],
+          },
+        },
+        { status: 200 }
+      );
+    }
+
     const firstFailure = !ordersRes.ok
       ? ordersPayload
       : !usersRes.ok

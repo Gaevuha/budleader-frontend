@@ -19,7 +19,7 @@ export const metadata: Metadata = {
   description: "Каталог товарів інтернет-магазину Будлідер",
 };
 
-const FILTER_COUNT_PAGE_LIMIT = 100;
+const FILTER_COUNT_PAGE_LIMIT = 500;
 
 const buildProductUniqueKey = (product: {
   id?: string;
@@ -53,17 +53,42 @@ const buildProductUniqueKey = (product: {
 const normalizeSearchText = (value: string): string =>
   value.trim().toLocaleLowerCase("uk");
 
-const loadStaticFilterProducts = async (category?: string) => {
+const loadStaticFilterProducts = async (params?: {
+  category?: string;
+  isNew?: boolean;
+  isSale?: boolean;
+}) => {
   try {
     const firstPage = await getProductsSSR({
       page: 1,
       limit: FILTER_COUNT_PAGE_LIMIT,
-      category,
+      ...params,
     });
+
+    const totalPages = Math.max(firstPage.pagination?.totalPages ?? 1, 1);
+    const remainingPages =
+      totalPages > 1
+        ? await Promise.allSettled(
+            Array.from({ length: totalPages - 1 }, (_, index) =>
+              getProductsSSR({
+                page: index + 2,
+                limit: FILTER_COUNT_PAGE_LIMIT,
+                ...params,
+              })
+            )
+          )
+        : [];
+
+    const allProducts = [
+      ...firstPage.products,
+      ...remainingPages.flatMap((page) =>
+        page.status === "fulfilled" ? page.value.products : []
+      ),
+    ];
 
     const seen = new Set<string>();
 
-    return firstPage.products.filter((product) => {
+    return allProducts.filter((product) => {
       const app = mapApiProductToAppProduct(product);
       const key = buildProductUniqueKey({
         id: product.id,
@@ -130,23 +155,19 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
     search: initialSearch || undefined,
   };
 
-  const [categories, { products, pagination }] = await Promise.all([
-    getCategories(),
-    loadFirstPageProducts(requestParams),
-  ]);
+  const [categories, { products, pagination }, staticFilterProducts] =
+    await Promise.all([
+      getCategories(),
+      loadFirstPageProducts(requestParams),
+      loadStaticFilterProducts({
+        category: initialCategory || undefined,
+        isNew: initialIsNew || undefined,
+        isSale: initialIsSale || undefined,
+      }),
+    ]);
 
-  let staticFilterProducts: Awaited<
-    ReturnType<typeof loadStaticFilterProducts>
-  > = [];
-  let initialBrandCounts: Record<string, number> = {};
   let resolvedProducts = products;
   let resolvedPagination = pagination;
-
-  if (!hasSearch || products.length === 0) {
-    staticFilterProducts = await loadStaticFilterProducts(
-      initialCategory || undefined
-    );
-  }
 
   if (hasSearch && products.length === 0 && staticFilterProducts.length > 0) {
     const normalizedSearch = normalizeSearchText(initialSearch);
@@ -171,7 +192,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
       categories={categories}
       initialProducts={resolvedProducts}
       initialFilterProducts={staticFilterProducts}
-      initialBrandCounts={initialBrandCounts}
+      initialBrandCounts={{}}
       initialPagination={resolvedPagination}
       initialCategory={initialCategory}
       initialBrands={initialBrands}

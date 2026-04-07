@@ -11,6 +11,8 @@ import {
   loginCSR,
   logoutAllCSR,
   logoutCSR,
+  resetCommerceRequestCache,
+  resetCurrentUserRequestCache,
   registerCSR,
   resetPasswordCSR,
   updateProfileCSR,
@@ -57,6 +59,8 @@ export function useLogin() {
   return useMutation({
     mutationFn: (payload: LoginPayload) => loginCSR(payload),
     onSuccess: async () => {
+      resetCurrentUserRequestCache();
+      resetCommerceRequestCache();
       publishAuthEvent("login");
       await queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
     },
@@ -69,6 +73,8 @@ export function useRegister() {
   return useMutation({
     mutationFn: (payload: RegisterPayload) => registerCSR(payload),
     onSuccess: async () => {
+      resetCurrentUserRequestCache();
+      resetCommerceRequestCache();
       publishAuthEvent("register");
       await queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
     },
@@ -81,6 +87,8 @@ export function useLogout() {
   return useMutation({
     mutationFn: logoutCSR,
     onSuccess: async () => {
+      resetCurrentUserRequestCache();
+      resetCommerceRequestCache();
       publishAuthEvent("logout");
       queryClient.setQueryData(USER_QUERY_KEY, null);
       await queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
@@ -94,6 +102,8 @@ export function useLogoutAll() {
   return useMutation({
     mutationFn: logoutAllCSR,
     onSuccess: async () => {
+      resetCurrentUserRequestCache();
+      resetCommerceRequestCache();
       publishAuthEvent("logout-all");
       queryClient.setQueryData(USER_QUERY_KEY, null);
       await queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
@@ -113,6 +123,7 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: (payload: UpdateProfilePayload) => updateProfileCSR(payload),
     onSuccess: async (user) => {
+      resetCurrentUserRequestCache();
       queryClient.setQueryData(USER_QUERY_KEY, user);
       await queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
     },

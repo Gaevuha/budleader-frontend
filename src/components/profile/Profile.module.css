@@ -477,7 +477,7 @@
   }
 }
 
-@media (max-width: 960px) {
+@media only screen and (max-width: 960px) {
   .header,
   .grid,
   .skeletonHeader,
@@ -486,7 +486,7 @@
   }
 }
 
-@media (max-width: 720px) {
+@media only screen and (max-width: 720px) {
   .page,
   .skeletonPage {
     padding: 24px 0 40px;

@@ -12,8 +12,7 @@ import { USER_QUERY_KEY } from "@/queries/authQueries";
 import {
   addToCartCSR,
   addToWishlistCSR,
-  getCartCSR,
-  getWishlistCSR,
+  resetCommerceRequestCache,
 } from "@/services/apiClient";
 import {
   type AuthBroadcastEvent,
@@ -118,51 +117,15 @@ function AppBootstrap() {
         }
       }
 
-      try {
-        const [serverCart, serverWishlist] = await Promise.all([
-          getCartCSR(),
-          getWishlistCSR(),
-        ]);
-
-        const normalizedCart = serverCart.items.map((item) => ({
-          ...(item.product
-            ? mapApiProductToAppProduct(item.product) ?? {
-                id: item.productId,
-                name: "Товар",
-                price: item.price,
-                image: "",
-                category: "Загальна",
-                brand: "Budleader",
-                inStock: true,
-              }
-            : {
-                id: item.productId,
-                name: "Товар",
-                price: item.price,
-                image: "",
-                category: "Загальна",
-                brand: "Budleader",
-                inStock: true,
-              }),
-          quantity: item.quantity,
-        }));
-
-        setCart(normalizedCart);
-        setWishlist(serverWishlist.items);
-      } catch {
-        // Keep local state if server sync fetch fails.
-      }
+      resetCommerceRequestCache();
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY }),
+        queryClient.invalidateQueries({ queryKey: WISHLIST_QUERY_KEY }),
+      ]);
     };
 
     void syncCommerce();
-  }, [
-    isAuthenticated,
-    localCart,
-    localWishlist,
-    setCart,
-    setWishlist,
-    user?.id,
-  ]);
+  }, [isAuthenticated, localCart, localWishlist, queryClient, user?.id]);
 
   useEffect(() => {
     if (!isAuthenticated) {

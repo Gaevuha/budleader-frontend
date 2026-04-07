@@ -114,7 +114,7 @@ export default function ReviewsPage() {
     const loadProducts = async () => {
       try {
         const response = await apiClient.get("/api/products", {
-          params: { page: 1, limit: 100 },
+          params: { page: 1, limit: 100, _ts: Date.now() },
         });
 
         const normalized = normalizeProducts(response.data);

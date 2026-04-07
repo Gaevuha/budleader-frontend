@@ -96,11 +96,14 @@ const buildClientResponse = async (
     headers.append(COOKIE_HEADER_NAME, rewriteSetCookiePath(cookie));
   }
 
-  const body = await upstream.arrayBuffer();
+  const contentType = upstream.headers.get("content-type") ?? "";
+  const body =
+    contentType.includes("application/json") || contentType.startsWith("text/")
+      ? await upstream.text()
+      : await upstream.arrayBuffer();
 
   return new NextResponse(body, {
     status: upstream.status,
-    statusText: upstream.statusText,
     headers,
   });
 };
@@ -109,21 +112,38 @@ const proxyRequest = async (
   request: NextRequest,
   context: { params: Promise<{ path: string[] }> }
 ): Promise<NextResponse> => {
-  const { path } = await context.params;
-  const targetUrl = buildTargetUrl(path, request.nextUrl.searchParams);
-  const method = request.method.toUpperCase();
-  const body =
-    method === "GET" || method === "HEAD"
-      ? undefined
-      : await request.arrayBuffer();
+  try {
+    const { path } = await context.params;
+    const targetUrl = buildTargetUrl(path, request.nextUrl.searchParams);
+    const method = request.method.toUpperCase();
+    const body =
+      method === "GET" || method === "HEAD"
+        ? undefined
+        : await request.arrayBuffer();
 
-  const upstream = await fetch(targetUrl, {
-    method,
-    headers: toForwardHeaders(request),
-    body,
-  });
+    const upstream = await fetch(targetUrl, {
+      method,
+      headers: toForwardHeaders(request),
+      body,
+    });
 
-  return buildClientResponse(upstream);
+    return buildClientResponse(upstream);
+  } catch (error) {
+    console.error("[api/proxy] request failed", {
+      method: request.method,
+      url: request.nextUrl.pathname,
+      search: request.nextUrl.search,
+      error,
+    });
+
+    return NextResponse.json(
+      {
+        success: false,
+        message: "Proxy request failed",
+      },
+      { status: 500 }
+    );
+  }
 };
 
 export async function GET(

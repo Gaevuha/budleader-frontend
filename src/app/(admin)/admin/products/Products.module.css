@@ -26,6 +26,50 @@
   color: var(--foreground);
 }
 
+.filtersBar {
+  margin-bottom: 24px;
+  display: grid;
+  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(180px, 1fr)) auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.searchField,
+.selectField {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.filterLabel {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--foreground);
+}
+
+.filterInput,
+.filterSelect {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background-color: var(--background);
+  color: var(--foreground);
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.filterCheckbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 0 4px;
+  color: var(--foreground);
+  font-size: 14px;
+  font-weight: 500;
+}
+
 .tableWrapper {
   overflow-x: auto;
   border: 1px solid var(--border);
@@ -92,6 +136,36 @@
   color: var(--danger);
 }
 
+.statusStack {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.statusSale,
+.statusNew,
+.statusNeutral {
+  padding: 6px 12px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.statusSale {
+  background-color: rgba(255, 152, 0, 0.14);
+  color: #b35a00;
+}
+
+.statusNew {
+  background-color: rgba(33, 150, 243, 0.12);
+  color: #0b63b5;
+}
+
+.statusNeutral {
+  background-color: rgba(148, 163, 184, 0.14);
+  color: #64748b;
+}
+
 .actions {
   display: flex;
   gap: 8px;
@@ -124,4 +198,154 @@
   background-color: var(--danger);
   color: white;
   border-color: var(--danger);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.formRow {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.textarea,
+.select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background-color: var(--background);
+  color: var(--foreground);
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.textarea {
+  min-height: 120px;
+  resize: vertical;
+}
+
+.checkboxRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.emptyState {
+  padding: 28px 0;
+  text-align: center;
+  color: #666;
+}
+
+.paginationBar {
+  margin-top: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.paginationMeta {
+  font-size: 14px;
+  color: #666;
+}
+
+.paginationControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.paginationItemWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.paginationGap {
+  color: #999;
+  font-size: 14px;
+}
+
+.paginationButton {
+  min-width: 40px;
+  height: 40px;
+  padding: 0 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--background);
+  color: var(--foreground);
+  font: inherit;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.paginationButton:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.paginationButton:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.paginationButtonActive {
+  border-color: var(--primary);
+  background: var(--primary);
+  color: #fff;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 12px;
+}
+
+@media only screen and (max-width: 768px) {
+  .container {
+    padding: 20px;
+  }
+
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .filtersBar {
+    grid-template-columns: 1fr;
+    align-items: stretch;
+  }
+
+  .formRow {
+    grid-template-columns: 1fr;
+  }
+
+  .paginationBar {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .paginationControls {
+    justify-content: flex-start;
+  }
 }

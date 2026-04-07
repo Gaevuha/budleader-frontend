@@ -30,9 +30,42 @@ export const apiClient: AxiosInstance = api;
 
 const AUTH_RATE_LIMIT_BACKOFF_MS = 15_000;
 const REVIEW_RATE_LIMIT_BACKOFF_MS = 15_000;
+const REQUEST_DEDUPE_TTL_MS = 1_500;
 
 let loginBackoffUntil = 0;
 let reviewBackoffUntil = 0;
+
+let currentUserRequest: Promise<User | null> | null = null;
+let currentUserSnapshot: {
+  value: User | null;
+  expiresAt: number;
+} | null = null;
+
+let cartRequest: Promise<CartData> | null = null;
+let cartSnapshot: {
+  value: CartData;
+  expiresAt: number;
+} | null = null;
+
+let wishlistRequest: Promise<WishlistResult> | null = null;
+let wishlistSnapshot: {
+  value: WishlistResult;
+  expiresAt: number;
+} | null = null;
+
+const isFreshSnapshot = (expiresAt: number) => expiresAt > Date.now();
+
+export const resetCurrentUserRequestCache = () => {
+  currentUserRequest = null;
+  currentUserSnapshot = null;
+};
+
+export const resetCommerceRequestCache = () => {
+  cartRequest = null;
+  cartSnapshot = null;
+  wishlistRequest = null;
+  wishlistSnapshot = null;
+};
 
 export interface CategoryLookupInput {
   id?: string;
@@ -797,6 +830,8 @@ export async function logoutCSR(): Promise<void> {
     method: "POST",
     body: {},
   });
+  resetCurrentUserRequestCache();
+  resetCommerceRequestCache();
 }
 
 export async function logoutAllCSR(): Promise<void> {
@@ -804,20 +839,37 @@ export async function logoutAllCSR(): Promise<void> {
     method: "POST",
     body: {},
   });
+  resetCurrentUserRequestCache();
+  resetCommerceRequestCache();
 }
 
 export async function getCurrentUserCSR(): Promise<User | null> {
-  const response = await apiFetch<{
-    user: (User & { _id?: string; name?: string }) | null;
-  }>("/api/auth/me", {
-    retryOn401: false,
-  });
-
-  if (!response.user) {
-    return null;
+  if (currentUserSnapshot && isFreshSnapshot(currentUserSnapshot.expiresAt)) {
+    return currentUserSnapshot.value;
   }
 
-  return normalizeUser(response.user);
+  if (!currentUserRequest) {
+    currentUserRequest = apiFetch<{
+      user: (User & { _id?: string; name?: string }) | null;
+    }>("/api/auth/me", {
+      retryOn401: false,
+    })
+      .then((response) => {
+        const normalized = response.user ? normalizeUser(response.user) : null;
+
+        currentUserSnapshot = {
+          value: normalized,
+          expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+        };
+
+        return normalized;
+      })
+      .finally(() => {
+        currentUserRequest = null;
+      });
+  }
+
+  return currentUserRequest;
 }
 
 export async function validateSessionCSR(): Promise<ValidateSessionData> {
@@ -849,7 +901,12 @@ export async function updateProfileCSR(
     }
   );
 
-  return normalizeUser(data);
+  const normalized = normalizeUser(data);
+  currentUserSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function changePasswordCSR(
@@ -885,11 +942,29 @@ export function getOAuthRedirectUrl(provider: "google" | "facebook"): string {
 }
 
 export async function getCartCSR(): Promise<CartData> {
-  const response = await apiClient.get<ApiResponse<CartData> | CartData>(
-    "/api/users/cart"
-  );
+  if (cartSnapshot && isFreshSnapshot(cartSnapshot.expiresAt)) {
+    return cartSnapshot.value;
+  }
 
-  return normalizeCartPayload(response.data);
+  if (!cartRequest) {
+    cartRequest = apiClient
+      .get<ApiResponse<CartData> | CartData>("/api/users/cart", {
+        params: { _ts: Date.now() },
+      })
+      .then((response) => {
+        const normalized = normalizeCartPayload(response.data);
+        cartSnapshot = {
+          value: normalized,
+          expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+        };
+        return normalized;
+      })
+      .finally(() => {
+        cartRequest = null;
+      });
+  }
+
+  return cartRequest;
 }
 
 export async function addToCartCSR(
@@ -900,7 +975,12 @@ export async function addToCartCSR(
     payload
   );
 
-  return normalizeCartPayload(response.data);
+  const normalized = normalizeCartPayload(response.data);
+  cartSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function removeFromCartCSR(productId: string): Promise<CartData> {
@@ -908,7 +988,12 @@ export async function removeFromCartCSR(productId: string): Promise<CartData> {
     `/api/users/cart/${productId}`
   );
 
-  return normalizeCartPayload(response.data);
+  const normalized = normalizeCartPayload(response.data);
+  cartSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function clearCartCSR(): Promise<CartData> {
@@ -916,13 +1001,38 @@ export async function clearCartCSR(): Promise<CartData> {
     "/api/users/cart"
   );
 
-  return normalizeCartPayload(response.data);
+  const normalized = normalizeCartPayload(response.data);
+  cartSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function getWishlistCSR(): Promise<WishlistResult> {
-  const response = await apiClient.get("/api/users/wishlist");
+  if (wishlistSnapshot && isFreshSnapshot(wishlistSnapshot.expiresAt)) {
+    return wishlistSnapshot.value;
+  }
 
-  return normalizeWishlistPayload(response.data);
+  if (!wishlistRequest) {
+    wishlistRequest = apiClient
+      .get("/api/users/wishlist", {
+        params: { _ts: Date.now() },
+      })
+      .then((response) => {
+        const normalized = normalizeWishlistPayload(response.data);
+        wishlistSnapshot = {
+          value: normalized,
+          expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+        };
+        return normalized;
+      })
+      .finally(() => {
+        wishlistRequest = null;
+      });
+  }
+
+  return wishlistRequest;
 }
 
 export async function getOrdersCSR(): Promise<OrdersResult> {
@@ -936,7 +1046,12 @@ export async function addToWishlistCSR(
 ): Promise<WishlistResult> {
   const response = await apiClient.post(`/api/users/wishlist/${productId}`);
 
-  return normalizeWishlistPayload(response.data);
+  const normalized = normalizeWishlistPayload(response.data);
+  wishlistSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function removeFromWishlistCSR(
@@ -944,7 +1059,12 @@ export async function removeFromWishlistCSR(
 ): Promise<WishlistResult> {
   const response = await apiClient.delete(`/api/users/wishlist/${productId}`);
 
-  return normalizeWishlistPayload(response.data);
+  const normalized = normalizeWishlistPayload(response.data);
+  wishlistSnapshot = {
+    value: normalized,
+    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
+  };
+  return normalized;
 }
 
 export async function createOrderCSR(

@@ -1,26 +1,27 @@
 .footer {
   background-color: var(--secondary);
-  padding: 48px 0 24px;
+  padding: 28px 0 20px;
   margin-top: auto;
+  border-top: 1px solid rgba(226, 232, 240, 0.9);
 }
 
 .grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 32px;
-  margin-bottom: 48px;
+  gap: 24px;
+  margin-bottom: 32px;
 }
 
 .column {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .logoColumn {
   display: flex;
-  align-items: flex-end;
-  justify-content: flex-end;
+  align-items: flex-start;
+  justify-content: flex-start;
 }
 
 .logo {
@@ -36,7 +37,7 @@
 }
 
 .title {
-  font-size: 18px;
+  font-size: 17px;
   font-weight: 600;
   color: var(--foreground);
   margin: 0;
@@ -46,7 +47,7 @@
   font-size: 14px;
   color: #666;
   margin: 0;
-  line-height: 1.5;
+  line-height: 1.6;
 }
 
 .list {
@@ -55,7 +56,7 @@
   margin: 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .list a {
@@ -71,20 +72,33 @@
 
 .bottom {
   border-top: 1px solid var(--border);
-  padding-top: 24px;
+  padding-top: 20px;
   text-align: center;
   font-size: 14px;
   color: #999;
 }
 
 @media only screen and (min-width: 768px) {
+  .footer {
+    padding: 40px 0 24px;
+  }
+
   .grid {
     grid-template-columns: repeat(2, 1fr);
+    gap: 28px;
+    margin-bottom: 40px;
   }
 }
 
 @media only screen and (min-width: 1440px) {
   .grid {
     grid-template-columns: repeat(4, 1fr);
+    align-items: start;
+    gap: 36px;
+  }
+
+  .logoColumn {
+    justify-content: flex-end;
+    align-items: flex-end;
   }
 }

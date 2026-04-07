@@ -123,3 +123,51 @@
   border-color: #eee;
   cursor: not-allowed;
 }
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+.editBtn {
+  color: #666;
+}
+
+.editBtn:hover:not(:disabled) {
+  background-color: var(--primary);
+  color: white;
+  border-color: var(--primary);
+}
+
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.fieldGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background-color: var(--background);
+  color: var(--foreground);
+  padding: 12px 14px;
+  font: inherit;
+}
+
+.modalActions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
