@@ -2,7 +2,7 @@
 
 import { type FormEvent, useEffect, useState } from "react";
 import { Layers, Edit2, Trash2 } from "lucide-react";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 
 import { Button } from "@/components/UI/Button/Button";
 import { FormInput } from "@/components/UI/FormInput/FormInput";

@@ -14,7 +14,7 @@ export const Container = ({
   style,
 }: ContainerProps) => {
   return (
-    <div className={`container ${styles.container} ${className}`} style={style}>
+    <div className={`${styles.container} ${className}`} style={style}>
       {children}
     </div>
   );

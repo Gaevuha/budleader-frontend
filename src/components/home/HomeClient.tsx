@@ -48,6 +48,14 @@ interface CategoryProductLink {
   name: string;
 }
 
+const renderHomeProductItem = (product: AppProduct) => {
+  return (
+    <li key={product.id} className={styles.productGridItem}>
+      <ProductCard product={product} />
+    </li>
+  );
+};
+
 const toSubcategoryItem = (
   item: string | CategorySubcategoryLink
 ): { label: string; id: string | null } => {
@@ -427,23 +435,25 @@ export function HomeClient({
 
       <section className={styles.features}>
         <Container>
-          <div className={styles.featuresGrid}>
+          <ul className={styles.featuresGrid}>
             {features.map((feature, idx) => {
               const Icon = pickIcon(featureIcons, idx);
 
               return (
-                <div key={feature.id} className={styles.featureCard}>
-                  <div className={styles.featureIcon}>
-                    <Icon size={28} />
+                <li key={feature.id} className={styles.featureGridItem}>
+                  <div className={styles.featureCard}>
+                    <div className={styles.featureIcon}>
+                      <Icon size={28} />
+                    </div>
+                    <div className={styles.featureText}>
+                      <h3 className={styles.featureTitle}>{feature.title}</h3>
+                      <p className={styles.featureDesc}>{feature.desc}</p>
+                    </div>
                   </div>
-                  <div className={styles.featureText}>
-                    <h3 className={styles.featureTitle}>{feature.title}</h3>
-                    <p className={styles.featureDesc}>{feature.desc}</p>
-                  </div>
-                </div>
+                </li>
               );
             })}
-          </div>
+          </ul>
         </Container>
       </section>
 
@@ -456,17 +466,15 @@ export function HomeClient({
                 Всі новинки <ArrowRight size={16} />
               </Link>
             </div>
-            <div className={styles.productGrid}>
-              {newProducts.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
+            <ul className={styles.productGrid}>
+              {newProducts.map(renderHomeProductItem)}
+            </ul>
           </Container>
         </section>
       )}
 
       {saleProducts.length > 0 && (
-        <section className={styles.productsSection}>
+        <section id="all-sales" className={styles.productsSection}>
           <Container>
             <div className={styles.sectionHeader}>
               <h2 className={styles.sectionTitle}>Акції</h2>
@@ -474,11 +482,9 @@ export function HomeClient({
                 Всі акції <ArrowRight size={16} />
               </Link>
             </div>
-            <div className={styles.productGrid}>
-              {saleProducts.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
+            <ul className={styles.productGrid}>
+              {saleProducts.map(renderHomeProductItem)}
+            </ul>
           </Container>
         </section>
       )}
@@ -492,11 +498,9 @@ export function HomeClient({
                 Дивитись всі <ArrowRight size={16} />
               </Link>
             </div>
-            <div className={styles.productGrid}>
-              {popularProducts.map((product) => (
-                <ProductCard key={product.id} product={product} />
-              ))}
-            </div>
+            <ul className={styles.productGrid}>
+              {popularProducts.map(renderHomeProductItem)}
+            </ul>
           </Container>
         </section>
       )}

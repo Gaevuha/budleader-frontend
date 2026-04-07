@@ -31,17 +31,35 @@ export default async function CategoryPage({ params }: CategoryPageProps) {
   });
 
   return (
-    <Container className={styles.container}>
-      <h1 className={styles.title}>Категорія: {normalizedCategory}</h1>
+    <section
+      className="brand-page-section"
+      aria-labelledby="category-page-title"
+    >
+      <Container>
+        <div className={`${styles.frame} brand-card`}>
+          <header className={styles.header}>
+            <p className={styles.eyebrow}>Категорія каталогу</p>
+            <h1 id="category-page-title" className={styles.title}>
+              {normalizedCategory}
+            </h1>
+            <p className={styles.description}>
+              Швидкий огляд товарів у вибраній категорії з актуальними цінами та
+              переходом до повного каталогу.
+            </p>
+          </header>
 
-      <div className={styles.list}>
-        {products.map((product) => (
-          <div key={product.id} className={styles.item}>
-            <span>{product.name}</span>
-            <strong>{product.price} грн</strong>
-          </div>
-        ))}
-      </div>
-    </Container>
+          <section className={styles.section}>
+            <ul className={styles.list}>
+              {products.map((product) => (
+                <li key={product.id} className={styles.item}>
+                  <span>{product.name}</span>
+                  <strong>{product.price} грн</strong>
+                </li>
+              ))}
+            </ul>
+          </section>
+        </div>
+      </Container>
+    </section>
   );
 }

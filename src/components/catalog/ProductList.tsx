@@ -10,6 +10,17 @@ interface ProductListProps {
   onResetFilters: () => void;
 }
 
+const renderProductListItem = (
+  product: AppProduct,
+  viewMode: ProductListProps["viewMode"]
+) => {
+  return (
+    <li key={product.id} className={styles.productListItem}>
+      <ProductCard product={product} viewMode={viewMode} />
+    </li>
+  );
+};
+
 export function ProductList({
   products,
   viewMode,
@@ -20,7 +31,11 @@ export function ProductList({
       <div className={styles.empty}>
         <h3>Товарів не знайдено</h3>
         <p>Спробуйте змінити критерії пошуку або очистити фільтри.</p>
-        <button className={styles.resetBtn} onClick={onResetFilters}>
+        <button
+          type="button"
+          className={styles.resetBtn}
+          onClick={onResetFilters}
+        >
           Скинути фільтри
         </button>
       </div>
@@ -28,12 +43,8 @@ export function ProductList({
   }
 
   return (
-    <div className={viewMode === "grid" ? styles.grid : styles.list}>
-      {products.map((product) => (
-        <div key={product.id}>
-          <ProductCard product={product} viewMode={viewMode} />
-        </div>
-      ))}
-    </div>
+    <ul className={viewMode === "grid" ? styles.grid : styles.list}>
+      {products.map((product) => renderProductListItem(product, viewMode))}
+    </ul>
   );
 }

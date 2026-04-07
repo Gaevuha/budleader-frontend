@@ -1,10 +1,19 @@
 "use client";
 
-import { Construction, Truck, Settings, type LucideIcon } from "lucide-react";
+import {
+  Construction,
+  MapPinned,
+  PhoneCall,
+  Settings,
+  ShieldCheck,
+  Truck,
+  type LucideIcon,
+} from "lucide-react";
 import { useActionState, useEffect, useState } from "react";
 import { useFormStatus } from "react-dom";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 
+import { Container } from "@/components/layout/Container/Container";
 import { useUser } from "@/queries/authQueries";
 import {
   initialServiceRequestFormState,
@@ -294,6 +303,10 @@ function ServicesPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [selectedService, setSelectedService] = useState<Service | null>(null);
   const { data: user } = useUser();
+  const averageRate = Math.round(
+    services.reduce((sum, service) => sum + service.pricePerHour, 0) /
+      services.length
+  );
 
   const handleServiceRequest = (service: Service) => {
     setSelectedService(service);
@@ -307,102 +320,175 @@ function ServicesPage() {
 
   return (
     <>
-      <section>
-        <div className={`container ${styles.container}`}>
-          <div className={styles.header}>
-            <h1 className={styles.title}>Послуги спецтехніки</h1>
-            <p className={styles.subtitle}>
-              «Будлідер» надає послуги спецтехніки для будівельних та земельних
-              робіт
-            </p>
+      <section
+        className="brand-page-section"
+        aria-labelledby="services-page-title"
+      >
+        <Container>
+          <div
+            className={`${styles.sectionFrame} ${styles.heroFrame} brand-card`}
+          >
+            <header className={styles.heroHeader}>
+              <p className={styles.sectionEyebrow}>Сервіс БудЛідер</p>
+              <h1 id="services-page-title" className={styles.heroTitle}>
+                Послуги спецтехніки
+              </h1>
+              <p className={styles.heroDescription}>
+                Оренда спецтехніки, логістика та виїзд на об&apos;єкт у єдиному
+                сервісному форматі. Кожна заявка проходить швидке погодження, а
+                техніка виїжджає з перевіреним екіпажем.
+              </p>
+              <ul className={styles.heroActions}>
+                <li>
+                  <span className="brand-pill">
+                    <ShieldCheck size={16} /> Перевірені екіпажі
+                  </span>
+                </li>
+                <li>
+                  <span className="brand-pill">
+                    <MapPinned size={16} /> Виїзд по місту й області
+                  </span>
+                </li>
+                <li>
+                  <span className="brand-pill">
+                    <PhoneCall size={16} /> Швидке підтвердження заявки
+                  </span>
+                </li>
+              </ul>
+            </header>
+
+            <ul className="brand-meta-list">
+              <li className="brand-meta-item">
+                <span className="brand-meta-value">{services.length}</span>
+                <span className="brand-meta-label">
+                  Основні напрямки техніки
+                </span>
+              </li>
+              <li className="brand-meta-item">
+                <span className="brand-meta-value">від 650 грн</span>
+                <span className="brand-meta-label">
+                  Погодинна ставка на старті
+                </span>
+              </li>
+              <li className="brand-meta-item">
+                <span className="brand-meta-value">≈ {averageRate} грн</span>
+                <span className="brand-meta-label">
+                  Середня ставка по послугах
+                </span>
+              </li>
+            </ul>
           </div>
-
-          <div className={styles.servicesGrid}>
-            {services.map((service) => {
-              const Icon = service.icon;
-              return (
-                <article key={service.id} className={styles.serviceCard}>
-                  <div className={styles.serviceHeader}>
-                    <div className={styles.serviceIcon}>
-                      <Icon className="w-7 h-7 text-primary" />
-                    </div>
-                    <div className={styles.servicePrice}>
-                      <div className={styles.servicePriceValue}>
-                        {service.pricePerHour} грн
-                      </div>
-                      <div className={styles.servicePriceLabel}>за годину</div>
-                    </div>
-                  </div>
-
-                  <h2 className={styles.serviceName}>{service.name}</h2>
-
-                  <p className={styles.serviceDescription}>
-                    {service.description}
-                  </p>
-
-                  <ul className={styles.serviceFeatures}>
-                    {service.features.map((feature, index) => (
-                      <li key={index} className={styles.serviceFeature}>
-                        <span className={styles.serviceFeatureIcon}>✓</span>
-                        <span>{feature}</span>
-                      </li>
-                    ))}
-                  </ul>
-
-                  <button
-                    onClick={() => handleServiceRequest(service)}
-                    className={styles.serviceButton}
-                  >
-                    Замовити послугу
-                  </button>
-                </article>
-              );
-            })}
-          </div>
-        </div>
+        </Container>
       </section>
 
-      <section>
-        <div className="container">
-          <div className={styles.consultationSection}>
-            <div className={styles.consultationContent}>
-              <h2 className={styles.consultationTitle}>
-                Потрібна консультація?
-              </h2>
-              <p className={styles.consultationDescription}>
-                Наші фахівці готові відповісти на всі ваші питання та допомогти
-                з вибором послуг
-              </p>
-              <div className={styles.consultationActions}>
-                <a
-                  href="tel:+380441234567"
-                  className={styles.consultationButton}
+      <section
+        className="brand-page-section"
+        aria-labelledby="services-list-title"
+      >
+        <Container>
+          <div className={`${styles.sectionFrame} brand-card`}>
+            <h2 id="services-list-title" className={styles.sectionTitle}>
+              Оберіть техніку під конкретний тип робіт
+            </h2>
+
+            <ul className={styles.servicesGrid}>
+              {services.map((service) => {
+                const Icon = service.icon;
+                return (
+                  <li key={service.id} className={styles.serviceCard}>
+                    <div className={styles.serviceHeader}>
+                      <div className={`brand-icon-badge ${styles.serviceIcon}`}>
+                        <Icon size={28} className={styles.serviceIconGlyph} />
+                      </div>
+                      <div className={styles.servicePrice}>
+                        <div className={styles.servicePriceValue}>
+                          {service.pricePerHour} грн
+                        </div>
+                        <div className={styles.servicePriceLabel}>
+                          за годину
+                        </div>
+                      </div>
+                    </div>
+
+                    <h3 className={styles.serviceName}>{service.name}</h3>
+
+                    <p className={styles.serviceDescription}>
+                      {service.description}
+                    </p>
+
+                    <ul className={styles.serviceFeatures}>
+                      {service.features.map((feature, index) => (
+                        <li key={index} className={styles.serviceFeature}>
+                          <span className={styles.serviceFeatureIcon}>✓</span>
+                          <span>{feature}</span>
+                        </li>
+                      ))}
+                    </ul>
+
+                    <button
+                      type="button"
+                      onClick={() => handleServiceRequest(service)}
+                      className={`${styles.serviceButton} brand-button`}
+                    >
+                      Замовити послугу
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </Container>
+      </section>
+
+      <section
+        className="brand-page-section"
+        aria-labelledby="consultation-title"
+      >
+        <Container>
+          <div className={styles.consultationGrid}>
+            <div className={`${styles.consultationSection} brand-card`}>
+              <div className={`brand-icon-badge ${styles.consultationIcon}`}>
+                <PhoneCall size={28} />
+              </div>
+              <div className={styles.consultationContent}>
+                <p className={styles.sectionEyebrow}>Підбір рішення</p>
+                <h2
+                  id="consultation-title"
+                  className={styles.consultationTitle}
                 >
-                  Зателефонувати
-                </a>
+                  Потрібна консультація перед замовленням?
+                </h2>
+                <p className={styles.consultationDescription}>
+                  Пояснимо, яка техніка краще підійде під ваш об&apos;єкт,
+                  підкажемо по тривалості робіт і порахуємо орієнтовний бюджет.
+                </p>
+                <div className={styles.consultationActions}>
+                  <a href="tel:+380686868400" className="brand-button">
+                    Зателефонувати
+                  </a>
+                  <a href="/contacts" className="brand-button-secondary">
+                    Контакти та адреси
+                  </a>
+                </div>
               </div>
             </div>
-          </div>
-        </div>
-      </section>
 
-      <section>
-        <div className="container">
-          <div className={styles.statsGrid}>
-            <div className={styles.statCard}>
-              <div className={styles.statValue}>500+</div>
-              <div className={styles.statLabel}>Виконаних проєктів</div>
-            </div>
-            <div className={styles.statCard}>
-              <div className={styles.statValue}>10+</div>
-              <div className={styles.statLabel}>Років на ринку</div>
-            </div>
-            <div className={styles.statCard}>
-              <div className={styles.statValue}>98%</div>
-              <div className={styles.statLabel}>Задоволених клієнтів</div>
-            </div>
+            <ul className={styles.statsGrid}>
+              <li className={styles.statCard}>
+                <div className={styles.statValue}>500+</div>
+                <div className={styles.statLabel}>Виконаних проєктів</div>
+              </li>
+              <li className={styles.statCard}>
+                <div className={styles.statValue}>10+</div>
+                <div className={styles.statLabel}>Років на ринку</div>
+              </li>
+              <li className={styles.statCard}>
+                <div className={styles.statValue}>98%</div>
+                <div className={styles.statLabel}>Задоволених клієнтів</div>
+              </li>
+            </ul>
           </div>
-        </div>
+        </Container>
       </section>
 
       {isModalOpen && selectedService && (

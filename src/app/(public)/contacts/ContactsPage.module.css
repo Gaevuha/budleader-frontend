@@ -1,0 +1,183 @@
+.heroFrame {
+  padding: 18px 16px;
+}
+
+.heroHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  max-width: 860px;
+  margin-bottom: 20px;
+}
+
+.heroTitle {
+  font-size: 32px;
+  line-height: 1;
+  color: #163020;
+}
+
+.heroDescription {
+  max-width: 720px;
+  color: var(--muted-foreground);
+  font-size: 16px;
+  line-height: 1.6;
+}
+
+.heroActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  list-style: none;
+  margin: 0 0 20px;
+  padding: 0;
+}
+
+.contactGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.contactCard,
+.scheduleCard,
+.supportCard {
+  padding: clamp(20px, 3vw, 28px);
+}
+
+.contactCard {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  border: 1px solid var(--brand-line);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: var(--brand-shadow-soft);
+}
+
+.contactTitle,
+.sectionTitle {
+  color: #163020;
+  line-height: 1.1;
+}
+
+.contactTitle {
+  margin-bottom: 10px;
+  font-size: 20px;
+}
+
+.contactPrimary {
+  color: #14532d;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.5;
+}
+
+.contactSecondary,
+.supportLabel {
+  color: var(--muted-foreground);
+  line-height: 1.6;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+}
+
+.scheduleHeader {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin-bottom: 18px;
+}
+
+.sectionEyebrow {
+  margin-bottom: 10px;
+  color: #166534;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.scheduleList {
+  list-style: none;
+  display: grid;
+  gap: 12px;
+  margin: 0;
+  padding: 0;
+}
+
+.scheduleItem,
+.supportItem {
+  padding: 14px 16px;
+  border-radius: 18px;
+  border: 1px solid var(--brand-line);
+  background: rgba(255, 255, 255, 0.8);
+}
+
+.supportCard {
+  display: grid;
+  gap: 16px;
+}
+
+.supportList {
+  display: grid;
+  gap: 12px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.supportValue {
+  display: block;
+  margin-top: 6px;
+  color: #14532d;
+  font-weight: 700;
+}
+
+@media only screen and (max-width: 1023px) {
+  .infoGrid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media only screen and (max-width: 767px) {
+  .heroFrame {
+    padding: 18px;
+  }
+
+  .contactCard,
+  .scheduleCard,
+  .supportCard {
+    padding: 18px;
+    border-radius: 18px;
+  }
+}
+
+@media only screen and (min-width: 768px) {
+  .heroFrame {
+    padding: clamp(20px, 3vw, 28px);
+  }
+
+  .heroHeader {
+    margin-bottom: 24px;
+  }
+
+  .heroTitle {
+    font-size: clamp(32px, 5vw, 56px);
+    line-height: 0.98;
+  }
+
+  .heroDescription {
+    font-size: clamp(16px, 2vw, 18px);
+    line-height: 1.65;
+  }
+
+  .heroActions {
+    margin-bottom: 24px;
+  }
+}

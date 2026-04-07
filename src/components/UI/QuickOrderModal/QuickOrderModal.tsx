@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 
 import { createQuickOrderCSR } from "@/services/apiClient";
 import type { AppProduct } from "@/types/app";

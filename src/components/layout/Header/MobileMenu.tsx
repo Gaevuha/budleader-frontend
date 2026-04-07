@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Heart, Moon, ShoppingCart, Sun, User, X } from "lucide-react";
+import { Moon, Sun, User, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
 import styles from "./MobileMenu.module.css";
@@ -14,13 +14,11 @@ interface MobileMenuLink {
 }
 
 interface MobileMenuProps {
-  cartCount: number;
   displayName: string;
   isAuthenticated: boolean;
   isOpen: boolean;
   profileHref: string;
   theme: "light" | "dark";
-  wishlistCount: number;
   onClose: () => void;
   onLogin: () => void;
   onLogout: () => void;
@@ -36,13 +34,11 @@ const primaryLinks: MobileMenuLink[] = [
 ];
 
 export function MobileMenu({
-  cartCount,
   displayName,
   isAuthenticated,
   isOpen,
   profileHref,
   theme,
-  wishlistCount,
   onClose,
   onLogin,
   onLogout,
@@ -155,10 +151,10 @@ export function MobileMenu({
             transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
           >
             <div className={styles.header}>
-              <div>
-                <p className={styles.eyebrow}>Навігація</p>
-                <h2 className={styles.title}>БудЛідер</h2>
-              </div>
+              <Link href="/" className={styles.brandLink} onClick={onClose}>
+                <span className={styles.brandText}>Буд</span>
+                <span className={styles.brandAccent}>Лідер</span>
+              </Link>
               <button
                 type="button"
                 ref={closeButtonRef}
@@ -168,39 +164,6 @@ export function MobileMenu({
               >
                 <X size={20} />
               </button>
-            </div>
-
-            <div className={styles.section}>
-              <div className={styles.quickActions}>
-                <Link
-                  href="/wishlist"
-                  className={`${styles.quickAction} ${
-                    isLinkActive("/wishlist") ? styles.quickActionActive : ""
-                  }`}
-                  aria-current={isLinkActive("/wishlist") ? "page" : undefined}
-                  onClick={onClose}
-                >
-                  <Heart size={18} />
-                  <span>Обране</span>
-                  {wishlistCount > 0 ? (
-                    <span className={styles.countBadge}>{wishlistCount}</span>
-                  ) : null}
-                </Link>
-                <Link
-                  href="/cart"
-                  className={`${styles.quickAction} ${
-                    isLinkActive("/cart") ? styles.quickActionActive : ""
-                  }`}
-                  aria-current={isLinkActive("/cart") ? "page" : undefined}
-                  onClick={onClose}
-                >
-                  <ShoppingCart size={18} />
-                  <span>Кошик</span>
-                  {cartCount > 0 ? (
-                    <span className={styles.countBadge}>{cartCount}</span>
-                  ) : null}
-                </Link>
-              </div>
             </div>
 
             <nav className={styles.section} aria-label="Мобільна навігація">

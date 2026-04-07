@@ -40,9 +40,11 @@ export const Footer = () => {
           </div>
           <div className={styles.column}>
             <h3 className={styles.title}>Контакти</h3>
-            <p className={styles.text}>+380 (99) 123-45-67</p>
-            <p className={styles.text}>068-68-68-400</p>
-            <p className={styles.text}>info@budleader.com.ua</p>
+            <ul className={styles.list}>
+              <li className={styles.text}>+380 (99) 123-45-67</li>
+              <li className={styles.text}>068-68-68-400</li>
+              <li className={styles.text}>info@budleader.com.ua</li>
+            </ul>
           </div>
           <div className={styles.logoColumn}>
             <Link href="/" className={styles.logo}>

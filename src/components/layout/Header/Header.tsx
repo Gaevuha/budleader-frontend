@@ -265,7 +265,7 @@ export const Header = ({ categories }: HeaderProps) => {
                 onClick={() => setIsSearchPanelOpen(true)}
                 aria-label="Відкрити пошук"
               >
-                <Search size={20} />
+                <Search className={styles.compactIcon} />
               </button>
 
               {shouldShowTabletProfileAction ? (
@@ -275,7 +275,7 @@ export const Header = ({ categories }: HeaderProps) => {
                   onClick={handleProfileAction}
                   aria-label={currentUser ? "Відкрити профіль" : "Увійти"}
                 >
-                  <User size={20} />
+                  <User className={styles.compactIcon} />
                 </button>
               ) : null}
 
@@ -286,7 +286,7 @@ export const Header = ({ categories }: HeaderProps) => {
                 onClick={handleWishlistNavigation}
               >
                 <span className={styles.iconWrapper}>
-                  <Heart size={20} />
+                  <Heart className={styles.compactIcon} />
                   {wishlist.length > 0 ? (
                     <motion.span
                       initial={{ scale: 0 }}
@@ -305,7 +305,7 @@ export const Header = ({ categories }: HeaderProps) => {
                 aria-label="Кошик"
               >
                 <span className={styles.iconWrapper}>
-                  <ShoppingCart size={20} />
+                  <ShoppingCart className={styles.compactIcon} />
                   {cartCount > 0 ? (
                     <motion.span
                       initial={{ scale: 0 }}
@@ -515,13 +515,11 @@ export const Header = ({ categories }: HeaderProps) => {
 
       {isCompactHeader ? (
         <MobileMenu
-          cartCount={cartCount}
           displayName={displayName}
           isAuthenticated={Boolean(currentUser)}
           isOpen={isMobileMenuOpen}
           profileHref={profileHref}
           theme={theme}
-          wishlistCount={wishlist.length}
           onClose={closeMobileMenu}
           onLogin={() => {
             closeMobileMenu();

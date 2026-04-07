@@ -862,6 +862,13 @@
   display: grid;
   grid-template-columns: repeat(1, 1fr);
   gap: 14px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.featureGridItem {
+  min-height: 100%;
 }
 
 @media only screen and (min-width: 768px) {
@@ -877,6 +884,7 @@
 }
 
 .featureCard {
+  height: 100%;
   background: white;
   border: 1px solid var(--border);
   padding: 18px;
@@ -885,7 +893,6 @@
   align-items: center;
   gap: 14px;
   transition: transform 0.2s, box-shadow 0.2s;
-  min-height: 100%;
 }
 
 .featureCard:hover {
@@ -927,6 +934,7 @@
 /* Sections */
 .productsSection {
   margin-bottom: 48px;
+  scroll-margin-top: 132px;
 }
 
 .sectionHeader {
@@ -979,6 +987,13 @@
   display: grid;
   grid-template-columns: repeat(1, 1fr);
   gap: 16px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.productGridItem {
+  height: 100%;
 }
 
 @media only screen and (min-width: 560px) {

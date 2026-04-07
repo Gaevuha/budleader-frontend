@@ -806,142 +806,155 @@ export function CatalogClient({
   };
 
   return (
-    <Container className={styles.container}>
-      <div className={styles.breadcrumbs}>
-        <Link href="/">Головна</Link>
-        <span>/</span>
-        {breadcrumbSegments.map((segment, index) => (
-          <span key={`${segment}-${index}`}>
-            <span
-              className={
-                index === breadcrumbSegments.length - 1
-                  ? styles.currentCrumb
-                  : undefined
-              }
-            >
-              {segment}
-            </span>
-            {index < breadcrumbSegments.length - 1 ? <span> / </span> : null}
-          </span>
-        ))}
-      </div>
-
-      <div className={styles.layout}>
-        <CatalogFilters
-          brands={brands}
-          brandCounts={brandCounts}
-          isDesktop={isDesktop}
-          isOpen={isFiltersOpen}
-          selectedBrands={selectedBrands}
-          onToggleBrand={handleToggleBrand}
-          inStockOnly={inStockOnly}
-          onInStockChange={handleInStockChange}
-          isNewOnly={isNewOnly}
-          onIsNewChange={handleIsNewChange}
-          isSaleOnly={isSaleOnly}
-          onIsSaleChange={handleIsSaleChange}
-          minPrice={minPrice}
-          maxPrice={maxPrice}
-          minAvailablePrice={priceBounds.min}
-          maxAvailablePrice={priceBounds.max}
-          inStockCount={filterCounts.inStock}
-          isNewCount={filterCounts.isNew}
-          isSaleCount={filterCounts.isSale}
-          onMinPriceChange={handleMinPriceChange}
-          onMaxPriceChange={handleMaxPriceChange}
-          onClose={() => setIsFiltersOpen(false)}
-          onReset={clearFilters}
-        />
-
-        <main className={styles.main}>
-          {!isDesktop ? (
-            <div className={styles.mobileActionsRow}>
-              <button
-                type="button"
-                className={styles.mobileFiltersBtn}
-                onClick={() => setIsFiltersOpen(true)}
-                aria-expanded={isFiltersOpen}
-                aria-controls="catalog-filters"
+    <section className="brand-page-section" data-tone="compact">
+      <Container className={styles.pageContent}>
+        <nav className={styles.breadcrumbs} aria-label="breadcrumb">
+          <Link href="/">Головна</Link>
+          <span>/</span>
+          {breadcrumbSegments.map((segment, index) => (
+            <span key={`${segment}-${index}`}>
+              <span
+                className={
+                  index === breadcrumbSegments.length - 1
+                    ? styles.currentCrumb
+                    : undefined
+                }
               >
-                Фільтр
-              </button>
-              <span className={styles.mobileResultsCount}>
-                {effectivePagination?.total ?? displayedProducts.length} товарів
+                {segment}
               </span>
-            </div>
-          ) : null}
+              {index < breadcrumbSegments.length - 1 ? <span> / </span> : null}
+            </span>
+          ))}
+        </nav>
 
-          <CatalogToolbar
-            viewMode={viewMode}
-            onViewModeChange={setViewMode}
-            sortOrder={sortOrder}
-            onSortOrderChange={setSortOrder}
-            productsCount={
-              effectivePagination?.total ?? displayedProducts.length
-            }
-            title={breadcrumbSegments[breadcrumbSegments.length - 1]}
-          />
-
-          {isCatalogLoading ? (
-            <div className={styles.pageLoader} role="status" aria-live="polite">
-              <Loader />
-            </div>
-          ) : (
-            <>
-              <ProductList
-                products={displayedProducts}
-                viewMode={viewMode}
-                onResetFilters={() => clearFilters({ clearSearch: true })}
+        <section className={styles.catalogSection}>
+          <div className={styles.container}>
+            <div className={styles.layout}>
+              <CatalogFilters
+                brands={brands}
+                brandCounts={brandCounts}
+                isDesktop={isDesktop}
+                isOpen={isFiltersOpen}
+                selectedBrands={selectedBrands}
+                onToggleBrand={handleToggleBrand}
+                inStockOnly={inStockOnly}
+                onInStockChange={handleInStockChange}
+                isNewOnly={isNewOnly}
+                onIsNewChange={handleIsNewChange}
+                isSaleOnly={isSaleOnly}
+                onIsSaleChange={handleIsSaleChange}
+                minPrice={minPrice}
+                maxPrice={maxPrice}
+                minAvailablePrice={priceBounds.min}
+                maxAvailablePrice={priceBounds.max}
+                inStockCount={filterCounts.inStock}
+                isNewCount={filterCounts.isNew}
+                isSaleCount={filterCounts.isSale}
+                onMinPriceChange={handleMinPriceChange}
+                onMaxPriceChange={handleMaxPriceChange}
+                onClose={() => setIsFiltersOpen(false)}
+                onReset={clearFilters}
               />
 
-              {isCompactLayout && canLoadMoreCompactProducts ? (
-                <div className={styles.loadMoreWrap}>
-                  <button
-                    type="button"
-                    className={styles.loadMoreButton}
-                    onClick={handleLoadMore}
-                    disabled={isLoadMorePending}
-                  >
-                    {isLoadMorePending ? (
-                      <span
-                        className={styles.loadMoreLoader}
-                        aria-hidden="true"
-                      />
-                    ) : null}
-                    <span>
-                      {isLoadMorePending ? "Завантаження..." : "Показати ще"}
+              <main className={styles.main}>
+                {!isDesktop ? (
+                  <div className={styles.mobileActionsRow}>
+                    <button
+                      type="button"
+                      className={styles.mobileFiltersBtn}
+                      onClick={() => setIsFiltersOpen(true)}
+                      aria-expanded={isFiltersOpen}
+                      aria-controls="catalog-filters"
+                    >
+                      Фільтр
+                    </button>
+                    <span className={styles.mobileResultsCount}>
+                      {effectivePagination?.total ?? displayedProducts.length}{" "}
+                      товарів
                     </span>
-                  </button>
-                </div>
-              ) : null}
+                  </div>
+                ) : null}
 
-              {shouldShowPagination && (
-                <ReactPaginate
-                  breakLabel="..."
-                  nextLabel="Далі"
-                  previousLabel="Назад"
-                  onPageChange={handlePageChange}
-                  pageRangeDisplayed={3}
-                  marginPagesDisplayed={1}
-                  pageCount={effectivePageCount}
-                  forcePage={currentPage - 1}
-                  containerClassName={styles.pagination}
-                  pageClassName={styles.pageItem}
-                  pageLinkClassName={styles.pageLink}
-                  previousClassName={styles.pageItem}
-                  previousLinkClassName={styles.pageLink}
-                  nextClassName={styles.pageItem}
-                  nextLinkClassName={styles.pageLink}
-                  breakClassName={styles.pageItem}
-                  breakLinkClassName={styles.pageLink}
-                  activeClassName={styles.pageItemActive}
-                  disabledClassName={styles.pageItemDisabled}
+                <CatalogToolbar
+                  viewMode={viewMode}
+                  onViewModeChange={setViewMode}
+                  sortOrder={sortOrder}
+                  onSortOrderChange={setSortOrder}
+                  productsCount={
+                    effectivePagination?.total ?? displayedProducts.length
+                  }
+                  title={breadcrumbSegments[breadcrumbSegments.length - 1]}
                 />
-              )}
-            </>
-          )}
-        </main>
-      </div>
-    </Container>
+
+                {isCatalogLoading ? (
+                  <div
+                    className={styles.pageLoader}
+                    role="status"
+                    aria-live="polite"
+                  >
+                    <Loader />
+                  </div>
+                ) : (
+                  <>
+                    <ProductList
+                      products={displayedProducts}
+                      viewMode={viewMode}
+                      onResetFilters={() => clearFilters({ clearSearch: true })}
+                    />
+
+                    {isCompactLayout && canLoadMoreCompactProducts ? (
+                      <div className={styles.loadMoreWrap}>
+                        <button
+                          type="button"
+                          className={styles.loadMoreButton}
+                          onClick={handleLoadMore}
+                          disabled={isLoadMorePending}
+                        >
+                          {isLoadMorePending ? (
+                            <span
+                              className={styles.loadMoreLoader}
+                              aria-hidden="true"
+                            />
+                          ) : null}
+                          <span>
+                            {isLoadMorePending
+                              ? "Завантаження..."
+                              : "Показати ще"}
+                          </span>
+                        </button>
+                      </div>
+                    ) : null}
+
+                    {shouldShowPagination && (
+                      <ReactPaginate
+                        breakLabel="..."
+                        nextLabel="Далі"
+                        previousLabel="Назад"
+                        onPageChange={handlePageChange}
+                        pageRangeDisplayed={3}
+                        marginPagesDisplayed={1}
+                        pageCount={effectivePageCount}
+                        forcePage={currentPage - 1}
+                        containerClassName={styles.pagination}
+                        pageClassName={styles.pageItem}
+                        pageLinkClassName={styles.pageLink}
+                        previousClassName={styles.pageItem}
+                        previousLinkClassName={styles.pageLink}
+                        nextClassName={styles.pageItem}
+                        nextLinkClassName={styles.pageLink}
+                        breakClassName={styles.pageItem}
+                        breakLinkClassName={styles.pageLink}
+                        activeClassName={styles.pageItemActive}
+                        disabledClassName={styles.pageItemDisabled}
+                      />
+                    )}
+                  </>
+                )}
+              </main>
+            </div>
+          </div>
+        </section>
+      </Container>
+    </section>
   );
 }

@@ -1,3 +1,7 @@
+.pageContent {
+  gap: 18px;
+}
+
 .container {
   padding: 20px 0 56px;
   background: radial-gradient(
@@ -7,6 +11,10 @@
     ),
     #f8fafc;
   min-height: calc(100vh - 120px);
+}
+
+.catalogSection {
+  width: 100%;
 }
 
 .breadcrumbs {
@@ -53,7 +61,7 @@
   display: flex;
   flex-direction: column;
   box-shadow: none;
-  border-right: 1px solid rgba(31, 166, 74, 0.18);
+  border-right: 1px solid var(--brand-line-strong);
 }
 
 .sidebarOpen {
@@ -67,7 +75,7 @@
   justify-content: space-between;
   gap: 16px;
   padding: 20px 18px 16px;
-  border-bottom: 1px solid rgba(31, 166, 74, 0.16);
+  border-bottom: 1px solid var(--brand-line-strong);
   background: linear-gradient(135deg, rgba(31, 166, 74, 0.12) 0%, #ffffff 100%);
 }
 
@@ -82,7 +90,7 @@
   width: 38px;
   height: 38px;
   background: #fff;
-  border: 1px solid rgba(31, 166, 74, 0.24);
+  border: 1px solid var(--brand-line-strong);
   border-radius: 12px;
   color: #166534;
   cursor: pointer;
@@ -103,7 +111,7 @@
 }
 
 .filterSection {
-  border-bottom: 1px solid rgba(31, 166, 74, 0.1);
+  border-bottom: 1px solid var(--brand-line);
 }
 
 .filterHeader {
@@ -151,14 +159,14 @@
   padding: 10px 12px;
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(31, 166, 74, 0.08);
+  border: 1px solid var(--brand-line);
   transition: border-color 0.2s ease, background-color 0.2s ease,
     transform 0.2s ease;
 }
 
 .checkboxRow:hover {
   transform: translateY(-1px);
-  border-color: rgba(31, 166, 74, 0.22);
+  border-color: var(--brand-line-strong);
   background: #ffffff;
 }
 
@@ -168,7 +176,7 @@
   width: 18px;
   height: 18px;
   border-radius: 6px;
-  border: 1.5px solid rgba(31, 166, 74, 0.38);
+  border: 1.5px solid var(--primary);
   background: #fff;
   cursor: pointer;
   display: inline-flex;
@@ -213,7 +221,7 @@
 
 .priceInput {
   height: 36px;
-  border: 1px solid rgba(31, 166, 74, 0.16);
+  border: 1px solid var(--brand-line-strong);
   border-radius: 12px;
   padding: 0 10px;
   font-size: 14px;
@@ -255,7 +263,7 @@
   padding: 16px 18px 20px;
   display: flex;
   gap: 12px;
-  border-top: 1px solid rgba(31, 166, 74, 0.12);
+  border-top: 1px solid var(--brand-line);
   background: linear-gradient(180deg, #ffffff 0%, #f3fbf6 100%);
 }
 
@@ -263,7 +271,7 @@
   flex: 1;
   padding: 12px;
   background: white;
-  border: 1px solid rgba(31, 166, 74, 0.2);
+  border: 1px solid var(--brand-line-strong);
   border-radius: 14px;
   color: #14532d;
   font-size: 14px;
@@ -451,6 +459,9 @@
   grid-template-columns: 1fr;
   gap: 16px;
   margin-bottom: 32px;
+  list-style: none;
+  margin: 0 0 32px;
+  padding: 0;
 }
 
 .list {
@@ -458,6 +469,13 @@
   flex-direction: column;
   gap: 16px;
   margin-bottom: 32px;
+  list-style: none;
+  margin: 0 0 32px;
+  padding: 0;
+}
+
+.productListItem {
+  height: 100%;
 }
 
 .loading {

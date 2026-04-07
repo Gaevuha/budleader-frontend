@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 
 import { Button } from "@/components/UI/Button/Button";
 import { Input } from "@/components/UI/Input/Input";

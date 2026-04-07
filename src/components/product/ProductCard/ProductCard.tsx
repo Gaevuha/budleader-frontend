@@ -6,7 +6,7 @@ import Link from "next/link";
 import { ShoppingCart, Heart, Check, Star } from "lucide-react";
 import type { AppProduct } from "@/types/app";
 import styles from "./ProductCard.module.css";
-import { toast } from "sonner";
+import { toast } from "@/components/UI/notifications/toast";
 import { PRODUCT_PLACEHOLDER_SRC } from "@/utils/media";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
@@ -23,6 +23,8 @@ import {
   useWishlistQuery,
 } from "@/queries/wishlistQueries";
 import { QuickOrderModal } from "@/components/UI/QuickOrderModal/QuickOrderModal";
+
+const RATING_STAR_INDEXES = [0, 1, 2, 3, 4] as const;
 
 interface ProductCardProps {
   product: AppProduct;
@@ -101,12 +103,13 @@ export const ProductCard = ({
   const ratingValue = Math.max(0, Math.min(5, rawRating));
   const ratingFillPercent = `${(ratingValue / 5) * 100}%`;
   const hasStockCount = typeof product.stock === "number" && product.inStock;
+  const productHref = `/product/${product.id}`;
 
   const discount = product.oldPrice
     ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
     : 0;
 
-  const handleAddToCart = async (e: React.MouseEvent) => {
+  const handleAddToCart = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
 
     const wasInCart = isInCartUi;
@@ -147,7 +150,9 @@ export const ProductCard = ({
     );
   };
 
-  const handleToggleWishlist = async (e: React.MouseEvent) => {
+  const handleToggleWishlist = async (
+    e: React.MouseEvent<HTMLButtonElement>
+  ) => {
     e.preventDefault();
 
     const wasWishlisted = isWishlistedUi;
@@ -175,7 +180,7 @@ export const ProductCard = ({
     toast.success(wasWishlisted ? "Видалено з обраного" : "Додано до обраного");
   };
 
-  const handleQuickOrder = async (e: React.MouseEvent) => {
+  const handleQuickOrder = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
 
     if (isAuthenticated) {
@@ -201,7 +206,7 @@ export const ProductCard = ({
       <div className={styles.listCard}>
         <div className={styles.listMainInfo}>
           <div className={styles.listName}>
-            <Link href={`/product/${product.id}`} className={styles.listTitle}>
+            <Link href={productHref} className={styles.listTitle}>
               {product.name}
             </Link>
             <div className={styles.listBrand}>Бренд: {product.brand}</div>
@@ -209,7 +214,7 @@ export const ProductCard = ({
             <div className={styles.listRatingWrap}>
               <div className={styles.ratingStars}>
                 <div className={styles.ratingStarsBase}>
-                  {[0, 1, 2, 3, 4].map((index) => (
+                  {RATING_STAR_INDEXES.map((index) => (
                     <Star key={`list-base-${index}`} size={12} />
                   ))}
                 </div>
@@ -217,7 +222,7 @@ export const ProductCard = ({
                   className={styles.ratingStarsFill}
                   style={{ width: ratingFillPercent }}
                 >
-                  {[0, 1, 2, 3, 4].map((index) => (
+                  {RATING_STAR_INDEXES.map((index) => (
                     <Star
                       key={`list-fill-${index}`}
                       size={12}
@@ -243,7 +248,11 @@ export const ProductCard = ({
             {product.price.toFixed(2)} грн
           </span>
           <span className={styles.listUnit}>шт</span>
-          <button className={styles.listAddBtn} onClick={handleAddToCart}>
+          <button
+            type="button"
+            className={styles.listAddBtn}
+            onClick={handleAddToCart}
+          >
             Додати
           </button>
         </div>
@@ -253,7 +262,7 @@ export const ProductCard = ({
 
   return (
     <>
-      <Link href={`/product/${product.id}`} className={styles.card}>
+      <div className={styles.card}>
         <div className={styles.imageContainer}>
           <div className={styles.badges}>
             {discount > 0 && (
@@ -265,38 +274,47 @@ export const ProductCard = ({
             )}
           </div>
 
+          <Link
+            href={productHref}
+            className={styles.imageLink}
+            aria-label={`Перейти до товару ${product.name}`}
+          >
+            <Image
+              src={imageSrc}
+              alt={product.name}
+              className={styles.image}
+              fill
+              sizes="(max-width: 768px) 100vw, 25vw"
+              unoptimized
+              onError={() => {
+                setFailedImageSrcMap((prev) => {
+                  if (prev[resolvedImageSrc]) {
+                    return prev;
+                  }
+
+                  return {
+                    ...prev,
+                    [resolvedImageSrc]: true,
+                  };
+                });
+              }}
+            />
+          </Link>
+
           <button
+            type="button"
             className={`${styles.wishlistBtn} ${
               isWishlistedUi ? styles.wishlistActive : ""
             }`}
             onClick={handleToggleWishlist}
             title="В обране"
+            aria-pressed={isWishlistedUi}
           >
             <Heart size={20} fill={isWishlistedUi ? "currentColor" : "none"} />
           </button>
 
-          <Image
-            src={imageSrc}
-            alt={product.name}
-            className={styles.image}
-            fill
-            sizes="(max-width: 768px) 100vw, 25vw"
-            unoptimized
-            onError={() => {
-              setFailedImageSrcMap((prev) => {
-                if (prev[resolvedImageSrc]) {
-                  return prev;
-                }
-
-                return {
-                  ...prev,
-                  [resolvedImageSrc]: true,
-                };
-              });
-            }}
-          />
-
           <button
+            type="button"
             className={styles.quickOrderBtn}
             onClick={handleQuickOrder}
             disabled={!product.inStock}
@@ -317,38 +335,42 @@ export const ProductCard = ({
             )}
           </div>
 
-          <h3 className={styles.title}>{product.name}</h3>
+          <Link href={productHref} className={styles.contentLink}>
+            <h3 className={styles.title}>{product.name}</h3>
 
-          <div className={styles.ratingWrap}>
-            <div className={styles.ratingStars}>
-              <div className={styles.ratingStarsBase}>
-                {[0, 1, 2, 3, 4].map((index) => (
-                  <Star key={`base-${index}`} size={14} />
-                ))}
+            <div className={styles.ratingWrap}>
+              <div className={styles.ratingStars}>
+                <div className={styles.ratingStarsBase}>
+                  {RATING_STAR_INDEXES.map((index) => (
+                    <Star key={`base-${index}`} size={14} />
+                  ))}
+                </div>
+                <div
+                  className={styles.ratingStarsFill}
+                  style={{ width: ratingFillPercent }}
+                >
+                  {RATING_STAR_INDEXES.map((index) => (
+                    <Star key={`fill-${index}`} size={14} fill="currentColor" />
+                  ))}
+                </div>
               </div>
-              <div
-                className={styles.ratingStarsFill}
-                style={{ width: ratingFillPercent }}
-              >
-                {[0, 1, 2, 3, 4].map((index) => (
-                  <Star key={`fill-${index}`} size={14} fill="currentColor" />
-                ))}
-              </div>
-            </div>
-            <span className={styles.ratingText}>{ratingValue.toFixed(1)}</span>
-          </div>
-
-          <div className={styles.metaGrid}>
-            <span className={styles.metaItem}>
-              Категорія: {product.category}
-            </span>
-            <span className={styles.metaItem}>Бренд: {product.brand}</span>
-            {hasStockCount && (
-              <span className={styles.metaItem}>
-                В наявності: {product.stock} шт
+              <span className={styles.ratingText}>
+                {ratingValue.toFixed(1)}
               </span>
-            )}
-          </div>
+            </div>
+
+            <div className={styles.metaGrid}>
+              <span className={styles.metaItem}>
+                Категорія: {product.category}
+              </span>
+              <span className={styles.metaItem}>Бренд: {product.brand}</span>
+              {hasStockCount && (
+                <span className={styles.metaItem}>
+                  В наявності: {product.stock} шт
+                </span>
+              )}
+            </div>
+          </Link>
 
           <div className={styles.footer}>
             <div className={styles.prices}>
@@ -367,12 +389,14 @@ export const ProductCard = ({
             </div>
 
             <button
+              type="button"
               className={`${styles.cartBtn} ${
                 isInCartUi ? styles.cartActive : ""
               }`}
               onClick={handleAddToCart}
               disabled={!product.inStock}
               title="Купити"
+              aria-pressed={isInCartUi}
             >
               <ShoppingCart
                 size={20}
@@ -381,7 +405,7 @@ export const ProductCard = ({
             </button>
           </div>
         </div>
-      </Link>
+      </div>
 
       <QuickOrderModal
         isOpen={isQuickOrderOpen}
