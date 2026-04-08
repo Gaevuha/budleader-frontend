@@ -30,6 +30,34 @@ export function AuthRoutePage({ mode }: AuthRoutePageProps) {
       return;
     }
 
+    if (typeof window !== "undefined") {
+      const referrer = document.referrer;
+
+      if (referrer) {
+        try {
+          const referrerUrl = new URL(referrer);
+
+          if (referrerUrl.origin === window.location.origin) {
+            const returnTo = `${referrerUrl.pathname}${referrerUrl.search}`;
+
+            if (
+              returnTo &&
+              !["/login", "/register", "/forgot-password"].includes(
+                referrerUrl.pathname
+              )
+            ) {
+              window.sessionStorage.setItem(
+                "budleader-auth-return-to",
+                returnTo
+              );
+            }
+          }
+        } catch {
+          // Ignore malformed referrers.
+        }
+      }
+    }
+
     open(mode);
     return () => {
       close();
@@ -41,9 +69,22 @@ export function AuthRoutePage({ mode }: AuthRoutePageProps) {
       return;
     }
 
-    router.replace(
-      userQuery.data.role === "admin" ? "/admin/dashboard" : "/profile"
-    );
+    if (userQuery.data.role === "admin") {
+      router.replace("/admin/dashboard");
+      return;
+    }
+
+    const storedReturnTo =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem("budleader-auth-return-to")
+        : null;
+
+    if (storedReturnTo && storedReturnTo.startsWith("/")) {
+      router.replace(storedReturnTo);
+      return;
+    }
+
+    router.replace("/");
   }, [router, userQuery.data]);
 
   return (

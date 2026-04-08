@@ -1,7 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Package, Search, Filter, Edit, Trash2, Eye } from "lucide-react";
+import {
+  Package,
+  Search,
+  Filter,
+  Edit,
+  Trash2,
+  Eye,
+  XCircle,
+} from "lucide-react";
 import { toast } from "@/components/UI/notifications/toast";
 
 import { Modal } from "@/components/UI/Modal/Modal";
@@ -40,6 +48,36 @@ type RawStatusHistoryItem = {
   status?: string;
   date?: string;
   comment?: string;
+};
+
+type RawProductRecord = {
+  id?: string;
+  _id?: string;
+  name?: string;
+  description?: string;
+  price?: number;
+  oldPrice?: number;
+  brand?: string;
+  stock?: number;
+  categoryId?: string;
+  category?: { _id?: string; id?: string; name?: string } | string;
+  isNew?: boolean;
+  isNewProduct?: boolean;
+  isSale?: boolean;
+  isOnSale?: boolean;
+};
+
+type RestockableProduct = {
+  id: string;
+  name: string;
+  description: string;
+  price: number;
+  oldPrice?: number;
+  brand: string;
+  categoryId: string;
+  stock: number;
+  isNew: boolean;
+  isSale: boolean;
 };
 
 type RawOrder = {
@@ -217,6 +255,101 @@ const formatAddress = (address?: AppOrder["shippingAddress"]) => {
   ]
     .filter(Boolean)
     .join(", ");
+};
+
+const normalizeRestockableProduct = (
+  payload: unknown
+): RestockableProduct | null => {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const candidate = (
+    payload &&
+    typeof payload === "object" &&
+    "data" in payload &&
+    (payload as { data?: unknown }).data
+      ? (payload as { data?: unknown }).data
+      : payload
+  ) as RawProductRecord;
+
+  const id = candidate.id ?? candidate._id;
+  const categoryId =
+    candidate.categoryId ??
+    (typeof candidate.category === "object"
+      ? candidate.category?._id ?? candidate.category?.id
+      : undefined);
+
+  if (!id || !candidate.name || !categoryId) {
+    return null;
+  }
+
+  return {
+    id,
+    name: candidate.name,
+    description: candidate.description ?? "",
+    price: Number.isFinite(Number(candidate.price))
+      ? Number(candidate.price)
+      : 0,
+    oldPrice: Number.isFinite(Number(candidate.oldPrice))
+      ? Number(candidate.oldPrice)
+      : undefined,
+    brand: candidate.brand?.trim() || "Budleader",
+    categoryId,
+    stock: Number.isFinite(Number(candidate.stock))
+      ? Number(candidate.stock)
+      : 0,
+    isNew: Boolean(candidate.isNew ?? candidate.isNewProduct),
+    isSale: Boolean(candidate.isSale ?? candidate.isOnSale),
+  };
+};
+
+const buildProductRestockFormData = (
+  product: RestockableProduct,
+  nextStock: number
+) => {
+  const formData = new FormData();
+
+  formData.set("name", product.name.trim());
+  formData.set("description", product.description.trim());
+  formData.set("price", String(product.price));
+  if (typeof product.oldPrice === "number") {
+    formData.set("oldPrice", String(product.oldPrice));
+  }
+  formData.set("brand", product.brand.trim());
+  formData.set("category", product.categoryId);
+  formData.set("stock", String(nextStock));
+  formData.set("isNew", String(product.isNew));
+  formData.set("isNewProduct", String(product.isNew));
+  formData.set("isSale", String(product.isSale));
+  formData.set("isOnSale", String(product.isSale));
+
+  return formData;
+};
+
+const logOrdersError = (
+  action: string,
+  error: unknown,
+  extra?: Record<string, unknown>
+) => {
+  const candidate = error as {
+    message?: string;
+    config?: { url?: string; method?: string; params?: unknown };
+    response?: { status?: number; data?: unknown };
+  };
+
+  console.warn(`[admin/orders] ${action} failed`, {
+    ...extra,
+    message:
+      candidate?.message ??
+      (error instanceof Error ? error.message : String(error)),
+    status: candidate?.response?.status,
+    url: candidate?.config?.url,
+    method: candidate?.config?.method,
+    params: candidate?.config?.params,
+    data: candidate?.response?.data,
+    error,
+  });
 };
 
 const extractOrdersFromPayload = (payload: unknown): unknown[] => {
@@ -532,6 +665,63 @@ export const Orders = () => {
     setSelectedOrder((current) => (current?.id === order.id ? order : current));
   };
 
+  const persistOrderStatus = async (
+    order: AppOrder,
+    status: AppOrderStatus,
+    comment?: string
+  ): Promise<AppOrder | null> => {
+    return isServiceOrder(order)
+      ? normalizeServiceRequest(
+          extractSingleOrder(
+            await apiFetch(`/api/admin/service-requests/${order.id}`, {
+              method: "PATCH",
+              body: {
+                status,
+                comment,
+              },
+            })
+          )
+        )
+      : normalizeOrder(
+          extractSingleOrder(
+            await apiFetch(`/api/proxy/api/orders/admin/${order.id}/status`, {
+              method: "PUT",
+              body: {
+                status,
+                comment,
+              },
+            })
+          )
+        );
+  };
+
+  const restoreCancelledOrderStock = async (order: AppOrder) => {
+    for (const item of order.items) {
+      const productId = item.productId?.trim();
+      const quantity = Math.max(0, item.quantity);
+
+      if (!productId || quantity <= 0) {
+        continue;
+      }
+
+      const product = normalizeRestockableProduct(
+        await apiFetch(`/api/proxy/api/products/${productId}?_ts=${Date.now()}`)
+      );
+
+      if (!product) {
+        throw new Error(
+          `Не вдалося підготувати товар ${productId} до повернення залишку`
+        );
+      }
+
+      await apiFetch(`/api/proxy/api/products/${productId}`, {
+        method: "PUT",
+        body: buildProductRestockFormData(product, product.stock + quantity),
+        retryOn401: false,
+      });
+    }
+  };
+
   const handleOpenModal = async (order: AppOrder, mode: "view" | "edit") => {
     setModalMode(mode);
     setSelectedOrder(order);
@@ -568,25 +758,13 @@ export const Orders = () => {
     order: AppOrder,
     status: AppOrderStatus
   ) => {
+    const shouldRestock =
+      !isServiceOrder(order) &&
+      order.status !== "cancelled" &&
+      status === "cancelled";
+
     try {
-      const normalizedOrder = isServiceOrder(order)
-        ? normalizeServiceRequest(
-            extractSingleOrder(
-              await apiFetch(`/api/admin/service-requests/${order.id}`, {
-                method: "PATCH",
-                body: { status },
-              })
-            )
-          )
-        : normalizeOrder(
-            extractSingleOrder(
-              (
-                await apiClient.put(`/api/orders/admin/${order.id}/status`, {
-                  status,
-                })
-              ).data
-            )
-          );
+      const normalizedOrder = await persistOrderStatus(order, status);
 
       if (normalizedOrder) {
         upsertOrder(normalizedOrder);
@@ -598,8 +776,28 @@ export const Orders = () => {
         );
       }
 
+      if (shouldRestock) {
+        try {
+          await restoreCancelledOrderStock(order);
+          toast.success("Замовлення скасовано, залишки повернуто");
+        } catch (error) {
+          logOrdersError("restoreCancelledOrderStock", error, {
+            orderId: order.id,
+            orderNumber: order.orderNumber,
+          });
+          toast.error(
+            "Статус змінено на скасовано, але не вдалося повернути залишки"
+          );
+        }
+        return;
+      }
+
       toast.success("Статус замовлення оновлено");
-    } catch {
+    } catch (error) {
+      logOrdersError("handleStatusChange", error, {
+        orderId: order.id,
+        nextStatus: status,
+      });
       toast.error("Не вдалося оновити статус");
     }
   };
@@ -611,35 +809,17 @@ export const Orders = () => {
 
     setIsSaving(true);
 
+    const shouldRestock =
+      !isServiceOrder(selectedOrder) &&
+      selectedOrder.status !== "cancelled" &&
+      editStatus === "cancelled";
+
     try {
-      const normalizedOrder = isServiceOrder(selectedOrder)
-        ? normalizeServiceRequest(
-            extractSingleOrder(
-              await apiFetch(
-                `/api/admin/service-requests/${selectedOrder.id}`,
-                {
-                  method: "PATCH",
-                  body: {
-                    status: editStatus,
-                    comment: editComment.trim() || undefined,
-                  },
-                }
-              )
-            )
-          )
-        : normalizeOrder(
-            extractSingleOrder(
-              (
-                await apiClient.put(
-                  `/api/orders/admin/${selectedOrder.id}/status`,
-                  {
-                    status: editStatus,
-                    comment: editComment.trim() || undefined,
-                  }
-                )
-              ).data
-            )
-          );
+      const normalizedOrder = await persistOrderStatus(
+        selectedOrder,
+        editStatus,
+        editComment.trim() || undefined
+      );
 
       if (normalizedOrder) {
         upsertOrder(normalizedOrder);
@@ -647,14 +827,55 @@ export const Orders = () => {
         upsertOrder({ ...selectedOrder, status: editStatus });
       }
 
-      toast.success("Зміни збережено");
+      if (shouldRestock) {
+        try {
+          await restoreCancelledOrderStock(selectedOrder);
+        } catch (error) {
+          logOrdersError("restoreCancelledOrderStock", error, {
+            orderId: selectedOrder.id,
+            orderNumber: selectedOrder.orderNumber,
+          });
+          toast.error(
+            "Статус змінено на скасовано, але не вдалося повернути залишки"
+          );
+          setModalMode(null);
+          setEditComment("");
+          return;
+        }
+      }
+
+      toast.success(
+        shouldRestock
+          ? "Замовлення скасовано, залишки повернуто"
+          : "Зміни збережено"
+      );
       setModalMode(null);
       setEditComment("");
-    } catch {
+    } catch (error) {
+      logOrdersError("handleSaveOrderChanges", error, {
+        orderId: selectedOrder.id,
+        nextStatus: editStatus,
+      });
       toast.error("Не вдалося зберегти зміни");
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCancelOrder = async (order: AppOrder) => {
+    if (order.status === "cancelled") {
+      return;
+    }
+
+    const shouldCancel = window.confirm(
+      `Скасувати замовлення ${order.orderNumber} і повернути товари на склад?`
+    );
+
+    if (!shouldCancel) {
+      return;
+    }
+
+    await handleStatusChange(order, "cancelled");
   };
 
   const handleDeleteOrder = async (orderId: string) => {
@@ -829,6 +1050,16 @@ export const Orders = () => {
                       >
                         <Edit size={18} />
                       </button>
+                      {order.status !== "cancelled" ? (
+                        <button
+                          type="button"
+                          className={`${styles.actionBtn} ${styles.cancelBtn}`}
+                          onClick={() => void handleCancelOrder(order)}
+                          title="Скасувати замовлення"
+                        >
+                          <XCircle size={18} />
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         className={`${styles.actionBtn} ${styles.deleteBtn}`}

@@ -17,7 +17,7 @@ import {
 import styles from "./NotificationCenter.module.css";
 
 const MAX_VISIBLE_NOTIFICATIONS = 4;
-const EXIT_ANIMATION_MS = 220;
+const EXIT_ANIMATION_MS = 300;
 
 const ICONS = {
   success: CheckCircle2,

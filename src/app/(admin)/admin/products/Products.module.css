@@ -1,5 +1,5 @@
 .container {
-  padding: 32px;
+  padding: 16px;
   background-color: var(--background);
   border-radius: 16px;
   border: 1px solid var(--border);
@@ -8,8 +8,10 @@
 
 .header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
+  flex-direction: column;
+  gap: 16px;
   margin-bottom: 32px;
 }
 
@@ -29,7 +31,7 @@
 .filtersBar {
   margin-bottom: 24px;
   display: grid;
-  grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(180px, 1fr)) auto;
+  grid-template-columns: 1fr;
   gap: 12px;
   align-items: end;
 }
@@ -78,6 +80,7 @@
 
 .table {
   width: 100%;
+  min-width: 860px;
   border-collapse: collapse;
   text-align: left;
 }
@@ -103,7 +106,7 @@
 }
 
 .table tbody tr {
-  transition: background-color 0.2s;
+  transition: background-color 0.3s;
 }
 
 .table tbody tr:hover {
@@ -181,7 +184,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: all 0.3s;
 }
 
 .actionBtn:hover {
@@ -209,7 +212,7 @@
 .formRow {
   display: grid;
   gap: 12px;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: 1fr;
 }
 
 .fieldGroup {
@@ -294,7 +297,7 @@
   color: var(--foreground);
   font: inherit;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
 }
 
 .paginationButton:hover:not(:disabled) {
@@ -320,7 +323,13 @@
   gap: 12px;
 }
 
-@media only screen and (max-width: 768px) {
+@media only screen and (min-width: 375px) {
+  .container {
+    padding: 20px;
+  }
+}
+
+@media only screen and (max-width: 767px) {
   .container {
     padding: 20px;
   }
@@ -347,5 +356,35 @@
 
   .paginationControls {
     justify-content: flex-start;
+  }
+}
+
+@media only screen and (min-width: 768px) {
+  .container {
+    padding: 24px;
+  }
+
+  .header {
+    align-items: center;
+    flex-direction: row;
+    gap: 12px;
+  }
+
+  .filtersBar {
+    grid-template-columns: minmax(220px, 1.5fr) repeat(4, minmax(180px, 1fr)) auto;
+  }
+
+  .formRow {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media only screen and (min-width: 1440px) {
+  .container {
+    padding: 32px;
+  }
+
+  .table {
+    min-width: 0;
   }
 }

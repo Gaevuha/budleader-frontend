@@ -1,5 +1,5 @@
 .container {
-  padding: 32px;
+  padding: 16px;
   background-color: var(--background);
   border-radius: 16px;
   border: 1px solid var(--border);
@@ -13,6 +13,8 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
+  flex-direction: column;
+  gap: 16px;
 }
 
 .title {
@@ -59,7 +61,7 @@
   color: var(--foreground);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s;
+  transition: border-color 0.3s;
 }
 
 .searchInput:focus {
@@ -99,7 +101,7 @@
   outline: none;
   appearance: none;
   cursor: pointer;
-  transition: border-color 0.2s;
+  transition: border-color 0.3s;
 }
 
 .filterSelect:focus {
@@ -116,6 +118,7 @@
 
 .table {
   width: 100%;
+  min-width: 720px;
   border-collapse: collapse;
 }
 
@@ -141,7 +144,7 @@
 }
 
 .table tbody tr {
-  transition: background-color 0.2s;
+  transition: background-color 0.3s;
 }
 
 .table tbody tr:hover {
@@ -238,11 +241,17 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: all 0.2s;
+  transition: all 0.3s;
 }
 
 .actionBtn:hover {
   background-color: var(--secondary);
+  opacity: 1;
+}
+
+.cancelBtn:hover {
+  background-color: rgba(255, 152, 0, 0.12);
+  color: #b45309;
   opacity: 1;
 }
 
@@ -379,7 +388,7 @@
   font: inherit;
   font-weight: 600;
   cursor: pointer;
-  transition: opacity 0.2s ease;
+  transition: opacity 0.3s ease;
 }
 
 .primaryButton {
@@ -470,7 +479,22 @@
   line-height: 1.5;
 }
 
+@media only screen and (min-width: 375px) {
+  .container {
+    padding: 20px;
+  }
+}
+
 @media only screen and (min-width: 768px) {
+  .container {
+    padding: 24px;
+  }
+
+  .header {
+    flex-direction: row;
+    gap: 12px;
+  }
+
   .filters {
     flex-direction: row;
   }
@@ -484,5 +508,15 @@
   .table th:nth-child(6),
   .table td:nth-child(6) {
     display: table-cell;
+  }
+}
+
+@media only screen and (min-width: 1440px) {
+  .container {
+    padding: 32px;
+  }
+
+  .table {
+    min-width: 0;
   }
 }

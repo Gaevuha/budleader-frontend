@@ -2,5 +2,30 @@
   "storeName": "Буд Лідер",
   "contactPhone": "+380 (99) 123-45-67",
   "notificationEmail": "info@budleader.com.ua",
-  "officeAddress": "м. Мена, вул. Шевченка, 75"
+  "officeAddress": "м. Мена, вул. Шевченка, 75",
+  "workSchedule": [
+    "Пн–Пт: 08:30–18:00",
+    "Сб: 09:00–15:00",
+    "Нд: прийом онлайн-заявок"
+  ],
+  "helpQuickLinks": [
+    {
+      "id": "help-center",
+      "label": "Центр допомоги",
+      "href": "/help",
+      "description": "Огляд каналів підтримки та сценаріїв звернення."
+    },
+    {
+      "id": "delivery-payment",
+      "label": "Доставка і оплата",
+      "href": "/help?faq=оплата#faq",
+      "description": "Швидкий перехід до питань про логістику та реквізити."
+    },
+    {
+      "id": "returns",
+      "label": "Повернення товару",
+      "href": "/help?faq=повернення#faq",
+      "description": "Повернення, обмін і подальші кроки по заявці."
+    }
+  ]
 }

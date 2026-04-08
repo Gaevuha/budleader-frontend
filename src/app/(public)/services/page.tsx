@@ -16,6 +16,11 @@ import { toast } from "../../../components/UI/notifications/toast";
 import { Container } from "@/components/layout/Container/Container";
 import { useUser } from "@/queries/authQueries";
 import {
+  helpQuickLinks,
+  normalizePhoneHref,
+  publicSupportSettings,
+} from "@/services/supportContent";
+import {
   initialServiceRequestFormState,
   type ServiceRequestFormState,
 } from "./form-state";
@@ -317,6 +322,9 @@ function ServicesPage() {
     setIsModalOpen(false);
     setSelectedService(null);
   };
+  const supportPhoneHref = normalizePhoneHref(
+    publicSupportSettings.contactPhone
+  );
 
   return (
     <>
@@ -461,14 +469,27 @@ function ServicesPage() {
                 <p className={styles.consultationDescription}>
                   Пояснимо, яка техніка краще підійде під ваш об&apos;єкт,
                   підкажемо по тривалості робіт і порахуємо орієнтовний бюджет.
+                  Для зв&apos;язку використовуємо єдиний номер підтримки{" "}
+                  {publicSupportSettings.contactPhone}.
                 </p>
                 <div className={styles.consultationActions}>
-                  <a href="tel:+380686868400" className="brand-button">
+                  <a href={supportPhoneHref} className="brand-button">
                     Зателефонувати
                   </a>
                   <a href="/contacts" className="brand-button-secondary">
                     Контакти та адреси
                   </a>
+                </div>
+                <div className={styles.consultationQuickLinks}>
+                  {helpQuickLinks.slice(0, 2).map((link) => (
+                    <a
+                      key={link.id}
+                      href={link.href}
+                      className={styles.consultationQuickLink}
+                    >
+                      {link.label}
+                    </a>
+                  ))}
                 </div>
               </div>
             </div>

@@ -6,33 +6,39 @@
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  padding: 12px;
+  padding: 8px;
 }
 
 .modal {
   width: 100%;
   max-width: 420px;
+  max-height: min(88vh, 720px);
   background: var(--background);
-  border-radius: 14px;
-  padding: 18px;
+  border-radius: 20px 20px 0 0;
+  padding: 20px 16px 18px;
   position: relative;
   box-shadow: 0 16px 40px rgba(2, 6, 23, 0.2);
+  overflow-y: auto;
 }
 
 .closeBtn {
   position: absolute;
-  top: 10px;
-  right: 10px;
+  top: 12px;
+  right: 12px;
+  width: 40px;
+  height: 40px;
   border: none;
-  background: transparent;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
   color: var(--foreground);
   cursor: pointer;
 }
 
 .title {
   margin: 0;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 700;
+  padding-right: 44px;
 }
 
 .subtitle {
@@ -54,11 +60,11 @@
 }
 
 .input {
-  height: 42px;
+  min-height: 46px;
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0 10px;
-  font-size: 14px;
+  font-size: 16px;
   background: var(--background);
   color: var(--foreground);
 }
@@ -67,7 +73,7 @@
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 10px;
-  font-size: 14px;
+  font-size: 16px;
   background: var(--background);
   color: var(--foreground);
   resize: vertical;
@@ -75,7 +81,7 @@
 }
 
 .submitBtn {
-  height: 44px;
+  min-height: 46px;
   border: none;
   border-radius: 10px;
   background: var(--primary);
@@ -89,6 +95,16 @@
   cursor: not-allowed;
 }
 
+@media only screen and (min-width: 375px) {
+  .overlay {
+    padding: 12px;
+  }
+
+  .modal {
+    padding: 22px 18px 20px;
+  }
+}
+
 @media only screen and (min-width: 768px) {
   .overlay {
     align-items: center;
@@ -96,7 +112,8 @@
   }
 
   .modal {
-    border-radius: 16px;
-    padding: 22px;
+    max-width: 480px;
+    border-radius: 18px;
+    padding: 24px;
   }
 }

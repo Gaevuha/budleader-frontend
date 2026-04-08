@@ -217,6 +217,34 @@
   gap: 10px;
 }
 
+.consultationQuickLinks {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+}
+
+.consultationQuickLink {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 42px;
+  padding: 0 14px;
+  border-radius: 14px;
+  border: 1px solid var(--brand-line);
+  background: rgba(255, 255, 255, 0.76);
+  color: #14532d;
+  font-size: 14px;
+  font-weight: 700;
+  transition: transform 0.3s ease, border-color 0.3s ease,
+    background-color 0.3s ease;
+}
+
+.consultationQuickLink:hover {
+  transform: translateY(-1px);
+  border-color: var(--brand-line-strong);
+  background: #ffffff;
+}
+
 .consultationActions :global(.brand-button),
 .consultationActions :global(.brand-button-secondary) {
   width: 100%;
@@ -381,8 +409,8 @@
   color: var(--foreground);
   padding: 12px 14px;
   outline: none;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease,
-    background-color 0.2s ease;
+  transition: border-color 0.3s ease, box-shadow 0.3s ease,
+    background-color 0.3s ease;
 }
 
 .input:focus,
@@ -513,6 +541,10 @@
   .heroDescription {
     font-size: clamp(16px, 2vw, 18px);
     line-height: 1.65;
+  }
+
+  .consultationQuickLinks {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .sectionTitle {

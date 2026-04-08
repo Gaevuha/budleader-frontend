@@ -49,7 +49,7 @@
   text-decoration: none;
   color: #666;
   font-weight: 500;
-  transition: all 0.2s;
+  transition: all 0.3s;
 }
 
 .navItem:hover {
@@ -86,7 +86,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 32px;
+  padding: 0 16px;
 }
 
 .header h2 {
@@ -104,9 +104,19 @@
 }
 
 .content {
-  padding: 32px;
+  padding: 16px;
   flex: 1;
   overflow-y: auto;
+}
+
+@media only screen and (min-width: 375px) {
+  .header {
+    padding: 0 20px;
+  }
+
+  .content {
+    padding: 20px;
+  }
 }
 
 @media only screen and (min-width: 768px) {
@@ -116,5 +126,23 @@
 
   .main {
     margin-left: 260px;
+  }
+
+  .header {
+    padding: 0 24px;
+  }
+
+  .content {
+    padding: 24px;
+  }
+}
+
+@media only screen and (min-width: 1440px) {
+  .header {
+    padding: 0 32px;
+  }
+
+  .content {
+    padding: 32px;
   }
 }

@@ -1,6 +1,7 @@
 import type { Product } from "@/types/product";
 
 export type ThemeMode = "light" | "dark";
+export type CatalogViewMode = "grid" | "list";
 
 export interface ProductReview {
   id: string;

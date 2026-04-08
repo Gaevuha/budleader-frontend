@@ -8,7 +8,11 @@ import {
   useRef,
   useState,
 } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import {
+  keepPreviousData,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ReactPaginate from "react-paginate";
@@ -18,15 +22,24 @@ import Loader from "@/components/UI/Loader/Loader";
 import { CatalogFilters } from "./CatalogFilters";
 import { CatalogToolbar } from "./CatalogToolbar";
 import { ProductList } from "./ProductList";
-import type { AppProduct } from "@/types/app";
+import type { AppProduct, CatalogViewMode } from "@/types/app";
 import type { Pagination } from "@/types/api";
 import type { Category } from "@/types/category";
 import type { CategorySubcategoryLink } from "@/types/category";
 import type { Product } from "@/types/product";
 import { mapApiProductToAppProduct } from "@/services/api";
+import { updateCatalogViewPreferenceCSR } from "@/services/catalogViewClient";
 import { getProductsCSR } from "@/services/apiClient";
+import {
+  DEFAULT_CATALOG_VIEW_MODE,
+  persistCatalogViewMode,
+  readStoredCatalogViewMode,
+} from "@/services/catalogViewPreference";
 import { useDebounce } from "@/hooks/useDebounce";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
+import { toast } from "@/components/UI/notifications/toast";
+import { USER_QUERY_KEY, useUser } from "@/queries/authQueries";
+import type { User } from "@/types/auth";
 import styles from "@/components/catalog/Catalog.module.css";
 
 interface CatalogClientProps {
@@ -78,6 +91,8 @@ export function CatalogClient({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const queryClient = useQueryClient();
+  const { data: currentUser } = useUser();
   const { isDesktop, isMobile, isTablet } = useBreakpoint();
   const isCompactLayout = isMobile || isTablet;
   const pageLimit = isDesktop ? DESKTOP_PAGE_LIMIT : COMPACT_PAGE_LIMIT;
@@ -113,9 +128,14 @@ export function CatalogClient({
   const [minPrice, setMinPrice] = useState("");
   const [maxPrice, setMaxPrice] = useState("");
   const [sortOrder, setSortOrder] = useState("default");
-  const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [guestViewMode, setGuestViewMode] = useState<CatalogViewMode>(
+    () => readStoredCatalogViewMode() ?? DEFAULT_CATALOG_VIEW_MODE
+  );
+  const [pendingViewMode, setPendingViewMode] =
+    useState<CatalogViewMode | null>(null);
   const [showInitialLoader, setShowInitialLoader] = useState(true);
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const viewModeSaveRequestIdRef = useRef(0);
 
   // Effective server-side filters — may differ from URL params when the user
   // toggles isNew/isSale checkboxes in the sidebar.
@@ -130,6 +150,9 @@ export function CatalogClient({
     effectiveIsSale ? "sale" : "",
     debouncedSearchTerm,
   ].join("|");
+  const persistedViewMode =
+    currentUser?.catalogViewMode ?? guestViewMode ?? DEFAULT_CATALOG_VIEW_MODE;
+  const viewMode = pendingViewMode ?? persistedViewMode;
 
   useEffect(() => {
     const prevUrlSearch = prevUrlSearchRef.current;
@@ -164,6 +187,52 @@ export function CatalogClient({
       setCurrentPage(1);
     });
   }, [urlSearchTerm]);
+
+  const handleViewModeChange = useCallback(
+    async (nextViewMode: CatalogViewMode) => {
+      if (nextViewMode === viewMode) {
+        return;
+      }
+
+      const previousViewMode = persistedViewMode;
+      const requestId = viewModeSaveRequestIdRef.current + 1;
+      viewModeSaveRequestIdRef.current = requestId;
+
+      setPendingViewMode(nextViewMode);
+      setGuestViewMode(nextViewMode);
+      persistCatalogViewMode(nextViewMode);
+
+      if (!currentUser) {
+        setPendingViewMode(null);
+        return;
+      }
+
+      try {
+        const response = await updateCatalogViewPreferenceCSR(nextViewMode);
+
+        if (viewModeSaveRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        setPendingViewMode(null);
+        persistCatalogViewMode(response.catalogViewMode);
+        queryClient.setQueryData<User | null>(USER_QUERY_KEY, {
+          ...currentUser,
+          catalogViewMode: response.catalogViewMode,
+        });
+      } catch {
+        if (viewModeSaveRequestIdRef.current !== requestId) {
+          return;
+        }
+
+        setPendingViewMode(null);
+        setGuestViewMode(previousViewMode);
+        persistCatalogViewMode(previousViewMode);
+        toast.error("Не вдалося зберегти вигляд каталогу");
+      }
+    },
+    [currentUser, persistedViewMode, queryClient, viewMode]
+  );
 
   const filterSourceProducts = useMemo(
     () =>
@@ -877,7 +946,7 @@ export function CatalogClient({
 
                 <CatalogToolbar
                   viewMode={viewMode}
-                  onViewModeChange={setViewMode}
+                  onViewModeChange={handleViewModeChange}
                   sortOrder={sortOrder}
                   onSortOrderChange={setSortOrder}
                   productsCount={
@@ -902,26 +971,29 @@ export function CatalogClient({
                       onResetFilters={() => clearFilters({ clearSearch: true })}
                     />
 
-                    {isCompactLayout && canLoadMoreCompactProducts ? (
+                    {isCompactLayout &&
+                    (canLoadMoreCompactProducts || isLoadMorePending) ? (
                       <div className={styles.loadMoreWrap}>
-                        <button
-                          type="button"
-                          className={styles.loadMoreButton}
-                          onClick={handleLoadMore}
-                          disabled={isLoadMorePending}
-                        >
-                          {isLoadMorePending ? (
-                            <span
-                              className={styles.loadMoreLoader}
-                              aria-hidden="true"
-                            />
-                          ) : null}
-                          <span>
-                            {isLoadMorePending
-                              ? "Завантаження..."
-                              : "Показати ще"}
-                          </span>
-                        </button>
+                        {isLoadMorePending ? (
+                          <div
+                            className={styles.loadMorePending}
+                            role="status"
+                            aria-live="polite"
+                          >
+                            <Loader className={styles.loadMoreLoader} />
+                            <span className={styles.visuallyHidden}>
+                              Завантаження...
+                            </span>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            className={styles.loadMoreButton}
+                            onClick={handleLoadMore}
+                          >
+                            Показати ще
+                          </button>
+                        )}
                       </div>
                     ) : null}
 

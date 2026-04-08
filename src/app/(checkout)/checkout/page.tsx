@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "@/components/UI/notifications/toast";
@@ -13,6 +13,32 @@ import { clearCartCSR, createOrderCSR } from "@/services/apiClient";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
 import styles from "./Checkout.module.css";
+
+const getUserCheckoutName = (
+  user:
+    | {
+        firstName?: string;
+        lastName?: string;
+        name?: string;
+      }
+    | null
+    | undefined
+): string => {
+  if (!user) {
+    return "";
+  }
+
+  const fullName = [user.firstName, user.lastName]
+    .map((value) => value?.trim() ?? "")
+    .filter(Boolean)
+    .join(" ");
+
+  if (fullName) {
+    return fullName;
+  }
+
+  return user.name?.trim() ?? "";
+};
 
 export default function CheckoutPage() {
   const router = useRouter();
@@ -29,6 +55,23 @@ export default function CheckoutPage() {
   const { data: currentUser } = useUser();
   const isAuthenticated = Boolean(currentUser);
   const cartQuery = useCartQuery(isAuthenticated);
+
+  useEffect(() => {
+    if (!currentUser) {
+      return;
+    }
+
+    const checkoutName = getUserCheckoutName(currentUser);
+    const checkoutPhone = currentUser.phone?.trim() ?? "";
+
+    if (!fullName.trim() && checkoutName) {
+      setFullName(checkoutName);
+    }
+
+    if (!phone.trim() && checkoutPhone) {
+      setPhone(checkoutPhone);
+    }
+  }, [currentUser, fullName, phone]);
 
   const items = useMemo(() => {
     if (isAuthenticated) {

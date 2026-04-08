@@ -1,16 +1,11 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-const AUTH_ROUTES = ["/login", "/register", "/forgot-password"];
 const ADMIN_PREFIX = "/admin";
 const PROFILE_ROUTES = ["/profile", "/orders"];
 
 const startsWithRoute = (pathname: string, route: string): boolean => {
   return pathname === route || pathname.startsWith(`${route}/`);
-};
-
-const isAuthRoute = (pathname: string): boolean => {
-  return AUTH_ROUTES.some((route) => startsWithRoute(pathname, route));
 };
 
 const isProfileRoute = (pathname: string): boolean => {
@@ -24,10 +19,6 @@ const isAdminRoute = (pathname: string): boolean => {
 export function middleware(req: NextRequest) {
   const { pathname } = req.nextUrl;
   const accessToken = req.cookies.get("accessToken")?.value;
-
-  if (isAuthRoute(pathname) && accessToken) {
-    return NextResponse.redirect(new URL("/profile", req.url));
-  }
 
   if (!accessToken) {
     if (isAdminRoute(pathname) || isProfileRoute(pathname)) {

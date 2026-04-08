@@ -7,6 +7,8 @@ import {
   mapApiPayloadToAppProducts,
   mapApiProductToAppProduct,
 } from "@/services/api";
+import { parseCatalogViewMode } from "@/services/catalogViewPreference";
+import { parseThemeMode } from "@/services/themePreference";
 import type { ApiResponse } from "@/types/api";
 import type { Pagination } from "@/types/api";
 import type { AppProduct, ProductReview } from "@/types/app";
@@ -33,6 +35,7 @@ const REVIEW_RATE_LIMIT_BACKOFF_MS = 15_000;
 const REQUEST_DEDUPE_TTL_MS = 1_500;
 
 let loginBackoffUntil = 0;
+let currentUserBackoffUntil = 0;
 let reviewBackoffUntil = 0;
 
 let currentUserRequest: Promise<User | null> | null = null;
@@ -58,6 +61,7 @@ const isFreshSnapshot = (expiresAt: number) => expiresAt > Date.now();
 export const resetCurrentUserRequestCache = () => {
   currentUserRequest = null;
   currentUserSnapshot = null;
+  currentUserBackoffUntil = 0;
 };
 
 export const resetCommerceRequestCache = () => {
@@ -98,6 +102,14 @@ export interface FetchProductsResult {
   products: AppProduct[];
   pagination: Pagination | null;
 }
+
+const logFetchRateLimit = (label: string, details: Record<string, unknown>) => {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.warn(label, details);
+};
 
 const uniqueCategoryTokens = (category: CategoryLookupInput): string[] => {
   return [category.id, category.slug, category.name]
@@ -196,6 +208,16 @@ export async function getProductsCSR(
   }
 
   if (!response.ok) {
+    if (response.status === 429) {
+      logFetchRateLimit("[getProductsCSR] rate limited", {
+        status: response.status,
+        url,
+        params,
+        retryAfter: response.headers.get("retry-after"),
+        payload,
+      });
+    }
+
     console.error("[getProductsCSR] request failed", response.status, payload);
     throw { response: { status: response.status, data: payload } };
   }
@@ -425,10 +447,19 @@ const normalizeOrderStatus = (status: unknown): string => {
   return typeof status === "string" && status.trim() ? status : "pending";
 };
 
-const normalizeUser = (raw: User & { _id?: string; name?: string }): User => ({
+const normalizeUser = (
+  raw: User & {
+    _id?: string;
+    name?: string;
+    theme?: unknown;
+    catalogViewMode?: unknown;
+  }
+): User => ({
   ...raw,
   id: raw.id ?? raw._id ?? "",
   firstName: raw.firstName ?? raw.name,
+  theme: parseThemeMode(raw.theme) ?? undefined,
+  catalogViewMode: parseCatalogViewMode(raw.catalogViewMode) ?? undefined,
 });
 
 const normalizeCartPayload = (payload: unknown): CartData => {
@@ -826,7 +857,7 @@ export async function registerCSR(
 }
 
 export async function logoutCSR(): Promise<void> {
-  await apiFetch<null>(`${AUTH_PROXY_BASE}/logout`, {
+  await apiFetch<null>("/api/auth/logout", {
     method: "POST",
     body: {},
   });
@@ -835,7 +866,7 @@ export async function logoutCSR(): Promise<void> {
 }
 
 export async function logoutAllCSR(): Promise<void> {
-  await apiFetch<null>(`${AUTH_PROXY_BASE}/logout-all`, {
+  await apiFetch<null>("/api/auth/logout-all", {
     method: "POST",
     body: {},
   });
@@ -844,6 +875,12 @@ export async function logoutAllCSR(): Promise<void> {
 }
 
 export async function getCurrentUserCSR(): Promise<User | null> {
+  const now = Date.now();
+
+  if (currentUserBackoffUntil > now) {
+    return currentUserSnapshot?.value ?? null;
+  }
+
   if (currentUserSnapshot && isFreshSnapshot(currentUserSnapshot.expiresAt)) {
     return currentUserSnapshot.value;
   }
@@ -861,8 +898,27 @@ export async function getCurrentUserCSR(): Promise<User | null> {
           value: normalized,
           expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
         };
+        currentUserBackoffUntil = 0;
 
         return normalized;
+      })
+      .catch((error) => {
+        if (
+          typeof error === "object" &&
+          error &&
+          "status" in error &&
+          Number((error as { status?: number }).status) === 429
+        ) {
+          currentUserBackoffUntil = Date.now() + AUTH_RATE_LIMIT_BACKOFF_MS;
+
+          if (currentUserSnapshot) {
+            return currentUserSnapshot.value;
+          }
+
+          return null;
+        }
+
+        throw error;
       })
       .finally(() => {
         currentUserRequest = null;
@@ -887,6 +943,10 @@ export async function updateProfileCSR(
 
   if (payload.phone?.trim()) {
     formData.set("phone", payload.phone.trim());
+  }
+
+  if (payload.theme) {
+    formData.set("theme", payload.theme);
   }
 
   if (payload.avatarFile instanceof File) {
@@ -937,8 +997,17 @@ export async function resetPasswordCSR(
   });
 }
 
-export function getOAuthRedirectUrl(provider: "google" | "facebook"): string {
-  return `${AUTH_PROXY_BASE}/${provider}`;
+export function getOAuthRedirectUrl(
+  provider: "google" | "facebook",
+  returnTo?: string
+): string {
+  const url = new URL(`${AUTH_PROXY_BASE}/${provider}`, window.location.origin);
+
+  if (returnTo?.trim()) {
+    url.searchParams.set("returnTo", returnTo);
+  }
+
+  return url.toString();
 }
 
 export async function getCartCSR(): Promise<CartData> {
@@ -1041,10 +1110,46 @@ export async function getOrdersCSR(): Promise<OrdersResult> {
   return normalizeOrdersPayload(response.data);
 }
 
+interface WishlistRequestOptions {
+  suppressDebugErrorLog?: boolean;
+}
+
 export async function addToWishlistCSR(
-  productId: string
+  productId: string,
+  options: WishlistRequestOptions = {}
 ): Promise<WishlistResult> {
-  const response = await apiClient.post(`/api/users/wishlist/${productId}`);
+  let response;
+
+  try {
+    response = await apiClient.request({
+      method: "post",
+      url: `/api/users/wishlist/${productId}`,
+      suppressDebugErrorLog: options.suppressDebugErrorLog,
+    });
+  } catch (error) {
+    const status =
+      typeof error === "object" &&
+      error &&
+      "response" in error &&
+      typeof (error as { response?: { status?: number } }).response?.status ===
+        "number"
+        ? (error as { response?: { status?: number } }).response?.status
+        : undefined;
+
+    if (status === 429 && process.env.NODE_ENV !== "production") {
+      console.warn("[addToWishlistCSR] rate limited", {
+        productId,
+        status,
+        suppressDebugErrorLog: options.suppressDebugErrorLog,
+        response:
+          typeof error === "object" && error && "response" in error
+            ? (error as { response?: unknown }).response
+            : undefined,
+      });
+    }
+
+    throw error;
+  }
 
   const normalized = normalizeWishlistPayload(response.data);
   wishlistSnapshot = {

@@ -1,6 +1,11 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  type QueryClient,
+  useMutation,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 
 import {
   addToCartCSR,
@@ -8,8 +13,13 @@ import {
   getCartCSR,
   removeFromCartCSR,
 } from "@/services/apiClient";
+import type { CartData } from "@/types/cart";
 
 export const CART_QUERY_KEY = ["cart"] as const;
+
+export const setCartQueryData = (queryClient: QueryClient, data: CartData) => {
+  queryClient.setQueryData<CartData>(CART_QUERY_KEY, data);
+};
 
 export function useCartQuery(enabled = true) {
   return useQuery({
@@ -25,8 +35,8 @@ export function useAddToCartMutation() {
 
   return useMutation({
     mutationFn: addToCartCSR,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+    onSuccess: (data) => {
+      setCartQueryData(queryClient, data);
     },
   });
 }
@@ -36,8 +46,8 @@ export function useRemoveFromCartMutation() {
 
   return useMutation({
     mutationFn: removeFromCartCSR,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+    onSuccess: (data) => {
+      setCartQueryData(queryClient, data);
     },
   });
 }
@@ -47,8 +57,8 @@ export function useClearCartMutation() {
 
   return useMutation({
     mutationFn: clearCartCSR,
-    onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+    onSuccess: (data) => {
+      setCartQueryData(queryClient, data);
     },
   });
 }

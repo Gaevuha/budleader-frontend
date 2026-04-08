@@ -6,6 +6,12 @@ import { usePathname } from "next/navigation";
 import { Moon, Sun, User, X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 
+import {
+  helpQuickLinks,
+  normalizePhoneHref,
+  publicSupportSettings,
+} from "@/services/supportContent";
+
 import styles from "./MobileMenu.module.css";
 
 interface MobileMenuLink {
@@ -47,6 +53,7 @@ export function MobileMenu({
   const pathname = usePathname();
   const drawerRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const phoneHref = normalizePhoneHref(publicSupportSettings.contactPhone);
 
   const isLinkActive = (href: string) => {
     if (href === "/") {
@@ -188,6 +195,25 @@ export function MobileMenu({
             </nav>
 
             <div className={styles.section}>
+              <p className={styles.sectionTitle}>Швидко по Help</p>
+              <div className={styles.quickLinkGrid}>
+                {helpQuickLinks.map((link) => (
+                  <Link
+                    key={link.id}
+                    href={link.href}
+                    className={styles.quickAction}
+                    onClick={onClose}
+                  >
+                    <span>{link.label}</span>
+                    <span className={styles.quickActionText}>
+                      {link.description}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </div>
+
+            <div className={styles.section}>
               <button
                 type="button"
                 className={styles.themeButton}
@@ -238,11 +264,11 @@ export function MobileMenu({
 
             <div className={styles.footer}>
               <a
-                href="tel:+380686868400"
+                href={phoneHref}
                 className={styles.contactLink}
                 onClick={onClose}
               >
-                068-68-68-400
+                {publicSupportSettings.contactPhone}
               </a>
               <p className={styles.footerText}>
                 Працюємо щодня для ваших замовлень

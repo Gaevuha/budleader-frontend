@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Container } from "../Container/Container";
@@ -16,30 +17,41 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CatalogDropdown } from "../../UI/CatalogDropdown/CatalogDropdown";
-import { useLogout, useUser } from "@/queries/authQueries";
+import { USER_QUERY_KEY, useLogout, useUser } from "@/queries/authQueries";
 import type { Category } from "@/types/category";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
+import {
+  applyThemeToDocument,
+  persistThemeMode,
+} from "@/services/themePreference";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
 import { useUIStore } from "@/store/ui/uiStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
+import { updateThemePreferenceCSR } from "@/services/themeClient";
+import { publicSupportSettings } from "@/services/supportContent";
+import { toast } from "@/components/UI/notifications/toast";
+import type { ThemeMode } from "@/types/app";
+import type { User as AppUser } from "@/types/auth";
 import { BurgerButton } from "./BurgerButton";
 import { MobileMenu } from "./MobileMenu";
 import styles from "./Header.module.css";
 
 interface HeaderProps {
   categories: Category[];
+  initialTheme: ThemeMode;
 }
 
-export const Header = ({ categories }: HeaderProps) => {
+export const Header = ({ categories, initialTheme }: HeaderProps) => {
   const pathname = usePathname();
   const router = useRouter();
+  const queryClient = useQueryClient();
   const { isTablet, isDesktop } = useBreakpoint();
   const { data: currentUser } = useUser();
   const logoutMutation = useLogout();
   const openAuthModal = useAuthModalStore((state) => state.open);
   const theme = useUIStore((state) => state.theme);
-  const toggleTheme = useUIStore((state) => state.toggleTheme);
+  const setTheme = useUIStore((state) => state.setTheme);
   const cart = useCartStore((state) => state.cart);
   const wishlist = useWishlistStore((state) => state.wishlist);
   const [isCatalogOpen, setIsCatalogOpen] = useState(false);
@@ -47,8 +59,10 @@ export const Header = ({ categories }: HeaderProps) => {
   const [isSearchPanelOpen, setIsSearchPanelOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchDirty, setIsSearchDirty] = useState(false);
+  const [isThemeUpdating, setIsThemeUpdating] = useState(false);
   const compactSearchInputRef = useRef<HTMLInputElement | null>(null);
   const isCompactHeader = !isDesktop;
+  const resolvedTheme = theme ?? initialTheme;
 
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false);
@@ -58,8 +72,41 @@ export const Header = ({ categories }: HeaderProps) => {
     setIsSearchPanelOpen(false);
   };
 
-  const handleThemeToggle = () => {
-    toggleTheme();
+  const handleThemeToggle = async () => {
+    if (isThemeUpdating) {
+      return;
+    }
+
+    const nextTheme: ThemeMode = resolvedTheme === "dark" ? "light" : "dark";
+    const previousTheme = resolvedTheme;
+
+    setTheme(nextTheme);
+    applyThemeToDocument(nextTheme);
+    persistThemeMode(nextTheme);
+
+    if (!currentUser) {
+      return;
+    }
+
+    setIsThemeUpdating(true);
+
+    try {
+      const response = await updateThemePreferenceCSR(nextTheme);
+      setTheme(response.theme);
+      applyThemeToDocument(response.theme);
+      persistThemeMode(response.theme);
+      queryClient.setQueryData<AppUser | null>(USER_QUERY_KEY, {
+        ...currentUser,
+        theme: response.theme,
+      });
+    } catch {
+      setTheme(previousTheme);
+      applyThemeToDocument(previousTheme);
+      persistThemeMode(previousTheme);
+      toast.error("Не вдалося зберегти тему");
+    } finally {
+      setIsThemeUpdating(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -166,6 +213,8 @@ export const Header = ({ categories }: HeaderProps) => {
     currentUser?.role === "admin" ? "/admin/dashboard" : "/profile";
   const cartCount = cart.reduce((acc: number, item) => acc + item.quantity, 0);
   const shouldShowTabletProfileAction = isTablet;
+  const isWishlistPage = pathname === "/wishlist";
+  const isCartPage = pathname === "/cart" || pathname.startsWith("/checkout");
 
   const handleProfileAction = () => {
     if (currentUser) {
@@ -202,18 +251,25 @@ export const Header = ({ categories }: HeaderProps) => {
               <button
                 className={styles.themeToggle}
                 onClick={handleThemeToggle}
+                disabled={isThemeUpdating}
                 title={
-                  theme === "light"
+                  resolvedTheme === "light"
                     ? "Увімкнути темну тему"
                     : "Увімкнути світлу тему"
                 }
               >
-                {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
+                {resolvedTheme === "light" ? (
+                  <Moon size={16} />
+                ) : (
+                  <Sun size={16} />
+                )}
               </button>
             </div>
 
             <div className={styles.topBarCenter}>
-              <span className={styles.phone}>068-68-68-400</span>
+              <span className={styles.phone}>
+                {publicSupportSettings.contactPhone}
+              </span>
             </div>
 
             <div className={styles.topBarRight}>
@@ -245,7 +301,6 @@ export const Header = ({ categories }: HeaderProps) => {
           </div>
         </Container>
       </div>
-
       <Container>
         {isCompactHeader ? (
           <div className={styles.compactWrapper}>
@@ -281,8 +336,11 @@ export const Header = ({ categories }: HeaderProps) => {
 
               <Link
                 href="/wishlist"
-                className={styles.iconActionLink}
+                className={`${styles.iconActionLink} ${
+                  isWishlistPage ? styles.iconActionActive : ""
+                }`}
                 aria-label="Обране"
+                aria-current={isWishlistPage ? "page" : undefined}
                 onClick={handleWishlistNavigation}
               >
                 <span className={styles.iconWrapper}>
@@ -301,8 +359,11 @@ export const Header = ({ categories }: HeaderProps) => {
 
               <Link
                 href="/cart"
-                className={styles.iconActionLink}
+                className={`${styles.iconActionLink} ${
+                  isCartPage ? styles.iconActionActive : ""
+                }`}
                 aria-label="Кошик"
+                aria-current={isCartPage ? "page" : undefined}
               >
                 <span className={styles.iconWrapper}>
                   <ShoppingCart className={styles.compactIcon} />
@@ -366,15 +427,6 @@ export const Header = ({ categories }: HeaderProps) => {
             </div>
 
             <div className={styles.actions}>
-              {currentUser ? (
-                <Link href={profileHref} className={styles.actionBtn}>
-                  <div className={styles.iconWrapper}>
-                    <User size={24} />
-                  </div>
-                  <span className={styles.actionText}>Профіль</span>
-                </Link>
-              ) : null}
-
               <Link
                 href="/wishlist"
                 className={styles.actionBtn}
@@ -424,7 +476,7 @@ export const Header = ({ categories }: HeaderProps) => {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.28, ease: [0.4, 0, 0.2, 1] }}
+              transition={{ duration: 0.3, ease: [0.4, 0, 0.2, 1] }}
               aria-label="Закрити пошук"
               onClick={closeSearchPanel}
             />
@@ -487,7 +539,7 @@ export const Header = ({ categories }: HeaderProps) => {
             initial={{ opacity: 0, y: -10 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -10 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.3 }}
             className={styles.dropdownWrapper}
           >
             <Container className={styles.dropdownContainerWrapper}>
@@ -519,7 +571,7 @@ export const Header = ({ categories }: HeaderProps) => {
           isAuthenticated={Boolean(currentUser)}
           isOpen={isMobileMenuOpen}
           profileHref={profileHref}
-          theme={theme}
+          theme={resolvedTheme}
           onClose={closeMobileMenu}
           onLogin={() => {
             closeMobileMenu();

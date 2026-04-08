@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "@/components/UI/notifications/toast";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import styles from "./AuthModal.module.css";
 
 import {
@@ -26,6 +26,8 @@ const TITLE_BY_MODE: Record<AuthModalMode, string> = {
 export const AuthModal = () => {
   const { isOpen, mode, open, close } = useAuthModalStore();
   const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const loginMutation = useLogin();
   const registerMutation = useRegister();
   const forgotPasswordMutation = useForgotPassword();
@@ -99,7 +101,33 @@ export const AuthModal = () => {
 
   const redirectAfterAuth = (role?: string) => {
     close();
-    router.push(role === "admin" ? "/admin/dashboard" : "/profile");
+
+    if (role === "admin") {
+      router.push("/admin/dashboard");
+      return;
+    }
+
+    const isAuthRoute =
+      pathname === "/login" ||
+      pathname === "/register" ||
+      pathname === "/forgot-password";
+
+    if (isAuthRoute) {
+      const storedReturnTo =
+        typeof window !== "undefined"
+          ? window.sessionStorage.getItem("budleader-auth-return-to")
+          : null;
+
+      if (storedReturnTo && storedReturnTo.startsWith("/")) {
+        router.replace(storedReturnTo);
+        return;
+      }
+
+      router.replace("/");
+      return;
+    }
+
+    router.refresh();
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -152,7 +180,13 @@ export const AuthModal = () => {
   };
 
   const handleOAuthRedirect = (provider: "google" | "facebook") => {
-    window.location.assign(getOAuthRedirectUrl(provider));
+    const currentPath = pathname || "/";
+    const currentSearch = searchParams?.toString();
+    const returnTo = currentSearch
+      ? `${currentPath}?${currentSearch}`
+      : currentPath;
+
+    window.location.assign(getOAuthRedirectUrl(provider, returnTo));
   };
 
   return (
