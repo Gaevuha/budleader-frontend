@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useRef } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -11,11 +11,13 @@ import { Button } from "@/components/UI/Button/Button";
 import { useUser } from "@/queries/authQueries";
 import {
   CART_QUERY_KEY,
+  setCartQueryData,
   useAddToCartMutation,
   useCartQuery,
   useClearCartMutation,
   useRemoveFromCartMutation,
 } from "@/queries/cartQueries";
+import { addToCartCSR, removeFromCartCSR } from "@/services/apiClient";
 import { useCartStore } from "@/store/cart/cartStore";
 import type { CartData } from "@/types/cart";
 import styles from "./Cart.module.css";
@@ -27,9 +29,31 @@ type CartViewItem = {
   image: string;
   price: number;
   quantity: number;
+  availableStock: number | null;
 };
 
 const FALLBACK_IMAGE = "https://placehold.co/80x80?text=No+Image";
+
+const preserveCartOrder = <T extends { productId: string }>(
+  items: T[],
+  previousOrder: string[]
+): T[] => {
+  const orderIndex = new Map(
+    previousOrder.map((productId, index) => [productId, index])
+  );
+
+  return [...items].sort((left, right) => {
+    const leftIndex = orderIndex.get(left.productId) ?? Number.MAX_SAFE_INTEGER;
+    const rightIndex =
+      orderIndex.get(right.productId) ?? Number.MAX_SAFE_INTEGER;
+
+    if (leftIndex !== rightIndex) {
+      return leftIndex - rightIndex;
+    }
+
+    return left.productId.localeCompare(right.productId);
+  });
+};
 
 const toCartData = (items: CartData["items"]): CartData => {
   const subtotal = items.reduce(
@@ -61,6 +85,7 @@ export default function CartPage() {
   const addToCartMutation = useAddToCartMutation();
   const removeFromCartMutation = useRemoveFromCartMutation();
   const clearCartMutation = useClearCartMutation();
+  const serverCartOrderRef = useRef<string[]>([]);
 
   const cart = useMemo<CartViewItem[]>(() => {
     if (!isAuthenticated) {
@@ -71,18 +96,31 @@ export default function CartPage() {
         image: item.image,
         price: item.price,
         quantity: item.quantity,
+        availableStock:
+          typeof item.stock === "number" && Number.isFinite(item.stock)
+            ? Math.max(0, item.stock)
+            : null,
       }));
     }
 
     const items = cartQuery.data?.items ?? [];
+    const previousOrder = serverCartOrderRef.current;
+    const sortedItems = preserveCartOrder(items, previousOrder);
 
-    return items.map((item) => ({
+    serverCartOrderRef.current = sortedItems.map((item) => item.productId);
+
+    return sortedItems.map((item) => ({
       id: item.id || item.productId,
       productId: item.productId,
       name: item.product?.name ?? "Товар",
       image: item.product?.image ?? FALLBACK_IMAGE,
       price: item.price,
       quantity: item.quantity,
+      availableStock:
+        typeof item.product?.stock === "number" &&
+        Number.isFinite(item.product.stock)
+          ? Math.max(0, item.product.stock)
+          : null,
     }));
   }, [cartQuery.data?.items, isAuthenticated, localCart]);
 
@@ -131,9 +169,6 @@ export default function CartPage() {
           queryClient.setQueryData(CART_QUERY_KEY, prev);
         }
       },
-      onSettled: () => {
-        void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
-      },
     });
   };
 
@@ -141,6 +176,14 @@ export default function CartPage() {
     item: CartViewItem,
     operation: "inc" | "dec"
   ) => {
+    if (
+      operation === "inc" &&
+      item.availableStock !== null &&
+      item.quantity >= item.availableStock
+    ) {
+      return;
+    }
+
     const nextQuantity =
       operation === "inc" ? item.quantity + 1 : item.quantity - 1;
 
@@ -178,9 +221,6 @@ export default function CartPage() {
               queryClient.setQueryData(CART_QUERY_KEY, prev);
             }
           },
-          onSettled: () => {
-            void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
-          },
         }
       );
 
@@ -203,20 +243,24 @@ export default function CartPage() {
 
     void (async () => {
       try {
-        await removeFromCartMutation.mutateAsync(item.productId);
-
-        if (nextQuantity > 0) {
-          await addToCartMutation.mutateAsync({
-            productId: item.productId,
-            quantity: nextQuantity,
-          });
+        if (nextQuantity === 0) {
+          const updatedCart = await removeFromCartCSR(item.productId);
+          setCartQueryData(queryClient, updatedCart);
+          return;
         }
+
+        await removeFromCartCSR(item.productId);
+
+        const updatedCart = await addToCartCSR({
+          productId: item.productId,
+          quantity: nextQuantity,
+        });
+
+        setCartQueryData(queryClient, updatedCart);
       } catch {
         if (prev) {
           queryClient.setQueryData(CART_QUERY_KEY, prev);
         }
-      } finally {
-        void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
       }
     })();
   };
@@ -234,9 +278,6 @@ export default function CartPage() {
         if (prev) {
           queryClient.setQueryData(CART_QUERY_KEY, prev);
         }
-      },
-      onSettled: () => {
-        void queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
       },
     });
   };
@@ -289,53 +330,80 @@ export default function CartPage() {
 
       <div className={styles.layout}>
         <ul className={styles.itemsList}>
-          {cart.map((item) => (
-            <li key={item.id} className={styles.cartItem}>
-              <div className={styles.itemImageWrapper}>
-                <Image
-                  src={item.image || FALLBACK_IMAGE}
-                  alt={item.name}
-                  className={styles.itemImage}
-                  width={80}
-                  height={80}
-                  unoptimized
-                />
-              </div>
+          {cart.map((item) => {
+            const remainingStock =
+              item.availableStock === null
+                ? null
+                : Math.max(item.availableStock - item.quantity, 0);
+            const isIncreaseDisabled =
+              item.availableStock !== null &&
+              item.quantity >= item.availableStock;
 
-              <div className={styles.itemInfo}>
-                <h3 className={styles.itemName}>{item.name}</h3>
-                <div className={styles.itemPrice}>{item.price} ₴</div>
-              </div>
+            return (
+              <li key={item.productId} className={styles.cartItem}>
+                <div className={styles.itemImageWrapper}>
+                  <Image
+                    src={item.image || FALLBACK_IMAGE}
+                    alt={item.name}
+                    className={styles.itemImage}
+                    width={80}
+                    height={80}
+                    unoptimized
+                  />
+                </div>
 
-              <div className={styles.quantityControls}>
+                <div className={styles.itemInfo}>
+                  <h3 className={styles.itemName}>{item.name}</h3>
+                  <div className={styles.itemPrice}>{item.price} ₴</div>
+                  {item.availableStock !== null ? (
+                    <div
+                      className={`${styles.stockHint} ${
+                        remainingStock === 0 ? styles.stockHintLimit : ""
+                      }`}
+                    >
+                      {remainingStock === 0
+                        ? "Ліміт по складу досягнуто"
+                        : `Залишок: ${remainingStock} шт`}
+                    </div>
+                  ) : null}
+                </div>
+
+                <div className={styles.quantityControls}>
+                  <button
+                    className={styles.qtyBtn}
+                    onClick={() => handleChangeQuantity(item, "dec")}
+                  >
+                    -
+                  </button>
+                  <span className={styles.qtyValue}>{item.quantity}</span>
+                  <button
+                    className={styles.qtyBtn}
+                    disabled={isIncreaseDisabled}
+                    onClick={() => handleChangeQuantity(item, "inc")}
+                    title={
+                      isIncreaseDisabled
+                        ? "Більше товару на складі немає"
+                        : "Збільшити кількість"
+                    }
+                  >
+                    +
+                  </button>
+                </div>
+
+                <div className={styles.itemTotal}>
+                  {(item.price * item.quantity).toLocaleString()} ₴
+                </div>
+
                 <button
-                  className={styles.qtyBtn}
-                  onClick={() => handleChangeQuantity(item, "dec")}
+                  type="button"
+                  className={styles.removeBtn}
+                  onClick={() => handleRemoveItem(item.productId)}
                 >
-                  -
+                  x
                 </button>
-                <span className={styles.qtyValue}>{item.quantity}</span>
-                <button
-                  className={styles.qtyBtn}
-                  onClick={() => handleChangeQuantity(item, "inc")}
-                >
-                  +
-                </button>
-              </div>
-
-              <div className={styles.itemTotal}>
-                {(item.price * item.quantity).toLocaleString()} ₴
-              </div>
-
-              <button
-                type="button"
-                className={styles.removeBtn}
-                onClick={() => handleRemoveItem(item.productId)}
-              >
-                x
-              </button>
-            </li>
-          ))}
+              </li>
+            );
+          })}
         </ul>
 
         <div className={styles.summary}>

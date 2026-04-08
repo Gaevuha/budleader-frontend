@@ -39,7 +39,7 @@
   color: var(--foreground);
   text-decoration: none;
   font-size: 14px;
-  transition: all 0.2s ease;
+  transition: all 0.3s ease;
   position: relative;
 }
 
@@ -131,7 +131,7 @@
   opacity: 0.8;
   text-decoration: none;
   font-size: 14px;
-  transition: color 0.2s, opacity 0.2s;
+  transition: color 0.3s, opacity 0.3s;
 }
 
 .list a:hover {

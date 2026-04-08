@@ -48,13 +48,13 @@ export function Hero() {
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: -20 }}
-          transition={{ duration: 0.5 }}
+          transition={{ duration: 0.3 }}
           className={styles.slideContent}
         >
           <motion.h1
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.2, duration: 0.6 }}
+            transition={{ delay: 0.2, duration: 0.3 }}
             className={styles.title}
           >
             {slides[currentSlide].title}
@@ -62,7 +62,7 @@ export function Hero() {
           <motion.p
             initial={{ opacity: 0, x: -30 }}
             animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: 0.4, duration: 0.6 }}
+            transition={{ delay: 0.4, duration: 0.3 }}
             className={styles.description}
           >
             {slides[currentSlide].description}
@@ -70,7 +70,7 @@ export function Hero() {
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.6, duration: 0.6 }}
+            transition={{ delay: 0.6, duration: 0.3 }}
           >
             <Link href={slides[currentSlide].link} className={styles.cta}>
               <span>{slides[currentSlide].cta}</span>
@@ -95,13 +95,13 @@ export function Hero() {
       </div>
 
       {/* Features */}
-      <motion.div
+      <motion.ul
         initial={{ opacity: 0, y: 40 }}
         animate={{ opacity: 1, y: 0 }}
-        transition={{ delay: 0.8, duration: 0.8 }}
+        transition={{ delay: 0.8, duration: 0.3 }}
         className={styles.features}
       >
-        <motion.div
+        <motion.li
           whileHover={{ scale: 1.05 }}
           transition={{ type: "spring", stiffness: 300 }}
           className={styles.feature}
@@ -113,9 +113,9 @@ export function Hero() {
             <h3 className={styles.featureTitle}>5000+ товарів</h3>
             <p className={styles.featureText}>Все для будівництва</p>
           </div>
-        </motion.div>
+        </motion.li>
 
-        <motion.div
+        <motion.li
           whileHover={{ scale: 1.05 }}
           transition={{ type: "spring", stiffness: 300 }}
           className={styles.feature}
@@ -127,9 +127,9 @@ export function Hero() {
             <h3 className={styles.featureTitle}>Доставка за 24 години</h3>
             <p className={styles.featureText}>По всій Україні</p>
           </div>
-        </motion.div>
+        </motion.li>
 
-        <motion.div
+        <motion.li
           whileHover={{ scale: 1.05 }}
           transition={{ type: "spring", stiffness: 300 }}
           className={styles.feature}
@@ -141,8 +141,8 @@ export function Hero() {
             <h3 className={styles.featureTitle}>Професійна підтримка</h3>
             <p className={styles.featureText}>Консультація 24/7</p>
           </div>
-        </motion.div>
-      </motion.div>
+        </motion.li>
+      </motion.ul>
 
       {/* Animated background elements */}
       <div className={styles.bgElements}>
@@ -152,7 +152,7 @@ export function Hero() {
             rotate: [0, 5, 0],
           }}
           transition={{
-            duration: 4,
+            duration: 8,
             repeat: Infinity,
             ease: "easeInOut",
           }}
@@ -164,7 +164,7 @@ export function Hero() {
             rotate: [0, -5, 0],
           }}
           transition={{
-            duration: 5,
+            duration: 10,
             repeat: Infinity,
             ease: "easeInOut",
           }}

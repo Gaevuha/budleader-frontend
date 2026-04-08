@@ -1,3 +1,5 @@
+import type { CatalogViewMode, ThemeMode } from "@/types/app";
+
 export interface User {
   id: string;
   name?: string;
@@ -5,6 +7,8 @@ export interface User {
   firstName?: string;
   lastName?: string;
   phone?: string;
+  theme?: ThemeMode;
+  catalogViewMode?: CatalogViewMode;
   role?: string;
   avatar?: string;
   createdAt?: string;
@@ -49,6 +53,7 @@ export interface UpdateProfilePayload {
   name?: string;
   email?: string;
   phone?: string;
+  theme?: ThemeMode;
   avatar?: string;
   avatarFile?: File | null;
 }

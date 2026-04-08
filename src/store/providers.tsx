@@ -23,17 +23,36 @@ import { useUser } from "@/queries/authQueries";
 import { useWishlistQuery } from "@/queries/wishlistQueries";
 import { mapApiProductToAppProduct } from "@/services/api";
 import { useCartStore } from "@/store/cart/cartStore";
+import { useUIStore } from "@/store/ui/uiStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { CART_QUERY_KEY } from "@/queries/cartQueries";
 import { WISHLIST_QUERY_KEY } from "@/queries/wishlistQueries";
+import {
+  applyThemeToDocument,
+  persistThemeMode,
+  resolveClientThemeMode,
+} from "@/services/themePreference";
+import type { ThemeMode } from "@/types/app";
+import type { User } from "@/types/auth";
 
 interface ProvidersProps {
   children: ReactNode;
+  initialTheme: ThemeMode;
+  initialUser: User | null;
 }
 
-function AppBootstrap() {
+const isMongoObjectId = (value: string): boolean =>
+  /^[a-f0-9]{24}$/i.test(value);
+
+function AppBootstrap({
+  initialTheme,
+  initialUser,
+}: {
+  initialTheme: ThemeMode;
+  initialUser: User | null;
+}) {
   const queryClient = useQueryClient();
-  const userQuery = useUser();
+  const userQuery = useUser({ initialData: initialUser });
   const user = userQuery.data;
   const isAuthenticated = Boolean(user);
   const localCart = useCartStore((state) => state.cart);
@@ -42,10 +61,32 @@ function AppBootstrap() {
   const localWishlist = useWishlistStore((state) => state.wishlist);
   const setWishlist = useWishlistStore((state) => state.setWishlist);
   const clearWishlist = useWishlistStore((state) => state.clearWishlist);
+  const setTheme = useUIStore((state) => state.setTheme);
   const syncedUserIdRef = useRef<string | null>(null);
   const wasAuthenticatedRef = useRef(false);
+  const sessionThemeKeyRef = useRef<string | null>(null);
   const cartQuery = useCartQuery(isAuthenticated);
   const wishlistQuery = useWishlistQuery(isAuthenticated);
+  const userTheme = user?.theme;
+  const sessionKey = user?.id ?? "guest";
+  const resolvedAuthTheme = userTheme ?? initialTheme;
+
+  useEffect(() => {
+    const didSessionChange = sessionThemeKeyRef.current !== sessionKey;
+
+    if (didSessionChange) {
+      sessionThemeKeyRef.current = sessionKey;
+    }
+
+    const nextTheme =
+      sessionKey === "guest"
+        ? resolveClientThemeMode(initialTheme)
+        : resolvedAuthTheme;
+
+    setTheme(nextTheme);
+    applyThemeToDocument(nextTheme);
+    persistThemeMode(nextTheme);
+  }, [initialTheme, resolvedAuthTheme, sessionKey, setTheme]);
 
   useEffect(() => {
     const channel = createAuthBroadcastChannel();
@@ -86,8 +127,15 @@ function AppBootstrap() {
   }, [clearCart, clearWishlist, queryClient]);
 
   useEffect(() => {
+    const isWishlistReadyForSync =
+      wishlistQuery.isFetched || localWishlist.length === 0;
+
     if (!isAuthenticated || !user?.id) {
       syncedUserIdRef.current = null;
+      return;
+    }
+
+    if (!isWishlistReadyForSync) {
       return;
     }
 
@@ -98,6 +146,17 @@ function AppBootstrap() {
     syncedUserIdRef.current = user.id;
 
     const syncCommerce = async () => {
+      const serverWishlistIds = new Set(
+        (wishlistQuery.data?.items ?? []).map((item) => item.id)
+      );
+      const wishlistIdsToSync = Array.from(
+        new Set(
+          localWishlist
+            .map((item) => item.id.trim())
+            .filter((id) => isMongoObjectId(id) && !serverWishlistIds.has(id))
+        )
+      );
+
       for (const item of localCart) {
         try {
           await addToCartCSR({
@@ -109,11 +168,11 @@ function AppBootstrap() {
         }
       }
 
-      for (const item of localWishlist) {
+      for (const productId of wishlistIdsToSync) {
         try {
-          await addToWishlistCSR(item.id);
+          await addToWishlistCSR(productId, { suppressDebugErrorLog: true });
         } catch {
-          // Item may already exist on server.
+          // Skip invalid or already-synced wishlist items and continue.
         }
       }
 
@@ -125,7 +184,15 @@ function AppBootstrap() {
     };
 
     void syncCommerce();
-  }, [isAuthenticated, localCart, localWishlist, queryClient, user?.id]);
+  }, [
+    isAuthenticated,
+    localCart,
+    localWishlist,
+    queryClient,
+    user?.id,
+    wishlistQuery.data?.items,
+    wishlistQuery.isFetched,
+  ]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -195,7 +262,11 @@ function AppBootstrap() {
   return null;
 }
 
-export function Providers({ children }: ProvidersProps) {
+export function Providers({
+  children,
+  initialTheme,
+  initialUser,
+}: ProvidersProps) {
   const [queryClient] = useState(
     () =>
       new QueryClient({
@@ -210,7 +281,7 @@ export function Providers({ children }: ProvidersProps) {
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppBootstrap />
+      <AppBootstrap initialTheme={initialTheme} initialUser={initialUser} />
       {children}
     </QueryClientProvider>
   );

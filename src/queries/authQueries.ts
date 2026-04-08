@@ -39,12 +39,16 @@ export function useUser(options: UseUserOptions = {}) {
     queryFn: () => getCurrentUserCSR(),
     staleTime: 60_000,
     gcTime: 5 * 60_000,
-    refetchOnWindowFocus: true,
-    refetchOnReconnect: true,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
     initialData: options.initialData,
     placeholderData: options.initialData,
     retry: (failureCount, error) => {
       if (error instanceof ApiFetchError && error.status === 401) {
+        return false;
+      }
+
+      if (error instanceof ApiFetchError && error.status === 429) {
         return false;
       }
 
@@ -58,11 +62,11 @@ export function useLogin() {
 
   return useMutation({
     mutationFn: (payload: LoginPayload) => loginCSR(payload),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       resetCurrentUserRequestCache();
       resetCommerceRequestCache();
+      queryClient.setQueryData(USER_QUERY_KEY, data.user);
       publishAuthEvent("login");
-      await queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
     },
   });
 }
@@ -72,11 +76,11 @@ export function useRegister() {
 
   return useMutation({
     mutationFn: (payload: RegisterPayload) => registerCSR(payload),
-    onSuccess: async () => {
+    onSuccess: async (data) => {
       resetCurrentUserRequestCache();
       resetCommerceRequestCache();
+      queryClient.setQueryData(USER_QUERY_KEY, data.user);
       publishAuthEvent("register");
-      await queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
     },
   });
 }

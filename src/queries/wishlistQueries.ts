@@ -23,7 +23,7 @@ export function useAddToWishlistMutation() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: addToWishlistCSR,
+    mutationFn: (productId: string) => addToWishlistCSR(productId),
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: WISHLIST_QUERY_KEY });
     },

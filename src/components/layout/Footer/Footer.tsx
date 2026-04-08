@@ -1,8 +1,15 @@
 import Link from "next/link";
 import { Container } from "../Container/Container";
+import {
+  helpQuickLinks,
+  normalizePhoneHref,
+  publicSupportSettings,
+} from "@/services/supportContent";
 import styles from "./Footer.module.css";
 
 export const Footer = () => {
+  const phoneHref = normalizePhoneHref(publicSupportSettings.contactPhone);
+
   return (
     <footer className={styles.footer}>
       <Container>
@@ -31,19 +38,34 @@ export const Footer = () => {
                 <Link href="/services">Послуги</Link>
               </li>
               <li>
-                <Link href="/help">Доставка і оплата</Link>
+                <Link href="/help">Допомога</Link>
               </li>
-              <li>
-                <Link href="/help">Повернення товару</Link>
-              </li>
+              {helpQuickLinks.slice(1).map((link) => (
+                <li key={link.id}>
+                  <Link href={link.href}>{link.label}</Link>
+                </li>
+              ))}
             </ul>
           </div>
           <div className={styles.column}>
             <h3 className={styles.title}>Контакти</h3>
             <ul className={styles.list}>
-              <li className={styles.text}>+380 (99) 123-45-67</li>
-              <li className={styles.text}>068-68-68-400</li>
-              <li className={styles.text}>info@budleader.com.ua</li>
+              <li>
+                <a href={phoneHref} className={styles.contactLink}>
+                  {publicSupportSettings.contactPhone}
+                </a>
+              </li>
+              <li>
+                <a
+                  href={`mailto:${publicSupportSettings.notificationEmail}`}
+                  className={styles.contactLink}
+                >
+                  {publicSupportSettings.notificationEmail}
+                </a>
+              </li>
+              <li className={styles.text}>
+                {publicSupportSettings.officeAddress}
+              </li>
             </ul>
           </div>
           <div className={styles.logoColumn}>
@@ -53,7 +75,10 @@ export const Footer = () => {
           </div>
         </div>
         <div className={styles.bottom}>
-          <p>© {new Date().getFullYear()} БудЛідер. Всі права захищено.</p>
+          <p>
+            © {new Date().getFullYear()} {publicSupportSettings.storeName}. Всі
+            права захищено.
+          </p>
         </div>
       </Container>
     </footer>

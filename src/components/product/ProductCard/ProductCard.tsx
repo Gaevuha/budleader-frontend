@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ShoppingCart, Heart, Check, Star } from "lucide-react";
+import { ShoppingCart, Heart, Check, Star, Zap } from "lucide-react";
 import type { AppProduct } from "@/types/app";
 import styles from "./ProductCard.module.css";
 import { toast } from "@/components/UI/notifications/toast";
@@ -203,60 +203,158 @@ export const ProductCard = ({
 
   if (viewMode === "list") {
     return (
-      <div className={styles.listCard}>
-        <div className={styles.listMainInfo}>
-          <div className={styles.listName}>
-            <Link href={productHref} className={styles.listTitle}>
-              {product.name}
-            </Link>
-            <div className={styles.listBrand}>Бренд: {product.brand}</div>
-            <div className={styles.listMeta}>Категорія: {product.category}</div>
-            <div className={styles.listRatingWrap}>
-              <div className={styles.ratingStars}>
-                <div className={styles.ratingStarsBase}>
-                  {RATING_STAR_INDEXES.map((index) => (
-                    <Star key={`list-base-${index}`} size={12} />
-                  ))}
-                </div>
-                <div
-                  className={styles.ratingStarsFill}
-                  style={{ width: ratingFillPercent }}
-                >
-                  {RATING_STAR_INDEXES.map((index) => (
-                    <Star
-                      key={`list-fill-${index}`}
-                      size={12}
-                      fill="currentColor"
-                    />
-                  ))}
-                </div>
+      <>
+        <div className={styles.listCard}>
+          <div className={styles.listMainInfo}>
+            <div className={styles.listMedia}>
+              <div className={styles.listBadges}>
+                {discount > 0 && (
+                  <span className={styles.badgeDiscount}>-{discount}%</span>
+                )}
+                {product.isNew && (
+                  <span className={styles.badgeNew}>Новинка</span>
+                )}
+                {product.isSale && !discount && (
+                  <span className={styles.badgeSale}>Хіт продажів</span>
+                )}
               </div>
-              <span className={styles.ratingText}>
-                {ratingValue.toFixed(1)}
+
+              <Link
+                href={productHref}
+                className={styles.listImageLink}
+                aria-label={`Перейти до товару ${product.name}`}
+              >
+                <Image
+                  src={imageSrc}
+                  alt={product.name}
+                  className={styles.listImage}
+                  fill
+                  sizes="(max-width: 767px) 50vw, 140px"
+                  unoptimized
+                  onError={() => {
+                    setFailedImageSrcMap((prev) => {
+                      if (prev[resolvedImageSrc]) {
+                        return prev;
+                      }
+
+                      return {
+                        ...prev,
+                        [resolvedImageSrc]: true,
+                      };
+                    });
+                  }}
+                />
+              </Link>
+            </div>
+
+            <div className={styles.listName}>
+              <Link href={productHref} className={styles.listTitle}>
+                {product.name}
+              </Link>
+              <div className={styles.listBrand}>Бренд: {product.brand}</div>
+              <div className={styles.listMeta}>
+                Категорія: {product.category}
+              </div>
+              <div className={styles.listRatingWrap}>
+                <div className={styles.ratingStars}>
+                  <div className={styles.ratingStarsBase}>
+                    {RATING_STAR_INDEXES.map((index) => (
+                      <Star key={`list-base-${index}`} size={12} />
+                    ))}
+                  </div>
+                  <div
+                    className={styles.ratingStarsFill}
+                    style={{ width: ratingFillPercent }}
+                  >
+                    {RATING_STAR_INDEXES.map((index) => (
+                      <Star
+                        key={`list-fill-${index}`}
+                        size={12}
+                        fill="currentColor"
+                      />
+                    ))}
+                  </div>
+                </div>
+                <span className={styles.ratingText}>
+                  {ratingValue.toFixed(1)}
+                </span>
+              </div>
+              {hasStockCount && (
+                <div className={styles.listMeta}>
+                  В наявності: {product.stock} шт
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className={styles.listPriceSection}>
+            <div className={styles.listPriceBlock}>
+              {product.oldPrice && (
+                <span className={styles.listOldPrice}>
+                  {product.oldPrice.toLocaleString()} ₴
+                </span>
+              )}
+              <span
+                className={`${styles.listPrice} ${
+                  discount > 0 ? styles.priceRed : ""
+                }`}
+              >
+                {product.price.toLocaleString()} ₴
               </span>
             </div>
-            {hasStockCount && (
-              <div className={styles.listMeta}>
-                В наявності: {product.stock} шт
-              </div>
-            )}
+
+            <div className={styles.listActionGroup}>
+              <button
+                type="button"
+                className={styles.listActionBtn}
+                onClick={handleQuickOrder}
+                disabled={!product.inStock}
+                title="Швидке замовлення"
+                aria-label="Швидке замовлення"
+              >
+                <Zap size={18} />
+              </button>
+              <button
+                type="button"
+                className={`${styles.listActionBtn} ${
+                  isWishlistedUi ? styles.listActionActive : ""
+                }`}
+                onClick={handleToggleWishlist}
+                title="В обране"
+                aria-label="Додати в обране"
+                aria-pressed={isWishlistedUi}
+              >
+                <Heart
+                  size={18}
+                  fill={isWishlistedUi ? "currentColor" : "none"}
+                />
+              </button>
+              <button
+                type="button"
+                className={`${styles.listActionBtn} ${
+                  styles.listActionPrimary
+                } ${isInCartUi ? styles.listActionActive : ""}`}
+                onClick={handleAddToCart}
+                disabled={!product.inStock}
+                title="Кошик"
+                aria-label="Додати в кошик"
+                aria-pressed={isInCartUi}
+              >
+                <ShoppingCart
+                  size={18}
+                  fill={isInCartUi ? "currentColor" : "none"}
+                />
+              </button>
+            </div>
           </div>
         </div>
 
-        <div className={styles.listPriceSection}>
-          <span className={styles.listPrice}>
-            {product.price.toFixed(2)} грн
-          </span>
-          <span className={styles.listUnit}>шт</span>
-          <button
-            type="button"
-            className={styles.listAddBtn}
-            onClick={handleAddToCart}
-          >
-            Додати
-          </button>
-        </div>
-      </div>
+        <QuickOrderModal
+          isOpen={isQuickOrderOpen}
+          onClose={() => setIsQuickOrderOpen(false)}
+          product={product}
+        />
+      </>
     );
   }
 
@@ -320,7 +418,8 @@ export const ProductCard = ({
             disabled={!product.inStock}
             title="Швидке замовлення"
           >
-            Швидке замовлення
+            <Zap className={styles.buttonIcon} />
+            <span>Швидке замовлення</span>
           </button>
         </div>
 

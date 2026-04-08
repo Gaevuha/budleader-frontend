@@ -1,8 +1,5 @@
 "use client";
 
-import { useEffect } from "react";
-import { useRouter } from "next/navigation";
-
 import { Container } from "@/components/layout/Container/Container";
 import { useUser } from "@/queries/authQueries";
 import { useOrdersQuery } from "@/queries/ordersQueries";
@@ -39,17 +36,10 @@ const formatRegistrationDate = (value?: string): string => {
 };
 
 export function ProfilePageClient({ initialUser }: ProfilePageClientProps) {
-  const router = useRouter();
   const meQuery = useUser({ initialData: initialUser });
   const currentUser = meQuery.data;
   const wishlistQuery = useWishlistQuery(Boolean(currentUser));
   const ordersQuery = useOrdersQuery(Boolean(currentUser));
-
-  useEffect(() => {
-    if (!meQuery.isLoading && !currentUser) {
-      router.replace("/login");
-    }
-  }, [currentUser, meQuery.isLoading, router]);
 
   if (meQuery.isLoading && !currentUser) {
     return <ProfileSkeleton />;
@@ -58,7 +48,7 @@ export function ProfilePageClient({ initialUser }: ProfilePageClientProps) {
   if (!currentUser) {
     return (
       <Container>
-        <div className={styles.emptyState}>Перенаправлення до входу...</div>
+        <div className={styles.emptyState}>Профіль тимчасово недоступний.</div>
       </Container>
     );
   }

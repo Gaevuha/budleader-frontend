@@ -68,10 +68,22 @@
   text-decoration: none;
   color: #666;
   font-size: 14px;
-  transition: color 0.2s;
+  transition: color 0.3s;
+}
+
+.contactLink {
+  text-decoration: none;
+  color: #666;
+  font-size: 14px;
+  line-height: 1.6;
+  transition: color 0.3s;
 }
 
 .list a:hover {
+  color: var(--primary);
+}
+
+.contactLink:hover {
   color: var(--primary);
 }
 

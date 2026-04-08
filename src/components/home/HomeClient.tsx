@@ -134,7 +134,7 @@ export function HomeClient({
   initialProducts,
 }: HomeClientProps) {
   const [isCatalogExpanded, setIsCatalogExpanded] = useState(false);
-  const collapsedCategoryCount = 15;
+  const collapsedCategoryCount = 14;
   const [activeCategoryId, setActiveCategoryId] = useState<string>("");
   const [loadingCategoryId, setLoadingCategoryId] = useState<string | null>(
     null
@@ -181,6 +181,7 @@ export function HomeClient({
   );
 
   const popularProducts = useMemo(() => products.slice(0, 4), [products]);
+  const lastSectionClassName = styles.lastSection;
 
   const fallbackSubmenuByCategory = useMemo(() => {
     const byCategoryId: Record<string, CategoryProductLink[]> = {};
@@ -283,7 +284,7 @@ export function HomeClient({
   ]);
 
   return (
-    <div className={styles.page}>
+    <>
       <section className={styles.heroSection}>
         <Container>
           <div className={styles.heroGrid}>
@@ -433,7 +434,15 @@ export function HomeClient({
         </Container>
       </section>
 
-      <section className={styles.features}>
+      <section
+        className={`${styles.features} ${
+          newProducts.length === 0 &&
+          saleProducts.length === 0 &&
+          popularProducts.length === 0
+            ? lastSectionClassName
+            : ""
+        }`}
+      >
         <Container>
           <ul className={styles.featuresGrid}>
             {features.map((feature, idx) => {
@@ -458,7 +467,13 @@ export function HomeClient({
       </section>
 
       {newProducts.length > 0 && (
-        <section className={styles.productsSection}>
+        <section
+          className={`${styles.productsSection} ${
+            saleProducts.length === 0 && popularProducts.length === 0
+              ? lastSectionClassName
+              : ""
+          }`}
+        >
           <Container>
             <div className={styles.sectionHeader}>
               <h2 className={styles.sectionTitle}>Новинки</h2>
@@ -474,7 +489,12 @@ export function HomeClient({
       )}
 
       {saleProducts.length > 0 && (
-        <section id="all-sales" className={styles.productsSection}>
+        <section
+          id="all-sales"
+          className={`${styles.productsSection} ${
+            popularProducts.length === 0 ? lastSectionClassName : ""
+          }`}
+        >
           <Container>
             <div className={styles.sectionHeader}>
               <h2 className={styles.sectionTitle}>Акції</h2>
@@ -490,7 +510,9 @@ export function HomeClient({
       )}
 
       {popularProducts.length > 0 && (
-        <section className={styles.productsSection}>
+        <section
+          className={`${styles.productsSection} ${lastSectionClassName}`}
+        >
           <Container>
             <div className={styles.sectionHeader}>
               <h2 className={styles.sectionTitle}>Популярні товари</h2>
@@ -504,6 +526,6 @@ export function HomeClient({
           </Container>
         </section>
       )}
-    </div>
+    </>
   );
 }

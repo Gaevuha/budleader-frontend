@@ -15,36 +15,78 @@
   color: var(--foreground);
 }
 
+.themeFallbackBanner {
+  background: color-mix(in srgb, #f59e0b 12%, var(--background));
+  border-bottom: 1px solid color-mix(in srgb, #f59e0b 28%, var(--border));
+}
+
+.themeFallbackInner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 0;
+}
+
+.themeFallbackText {
+  margin: 0;
+  color: var(--foreground);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.themeFallbackDismiss {
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--foreground);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.3s ease, color 0.3s ease,
+    border-color 0.3s ease;
+}
+
+.themeFallbackDismiss:hover {
+  background: rgba(0, 0, 0, 0.04);
+  color: var(--primary);
+  border-color: var(--primary);
+}
+
 .compactWrapper {
   display: grid;
-  grid-template-columns: auto 1fr auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
-  gap: 12px;
-  padding: 12px 0;
+  gap: 8px;
+  padding: 10px 0;
 }
 
 .compactActions {
   display: flex;
   align-items: center;
   justify-self: end;
-  gap: 8px;
+  gap: 6px;
 }
 
 .iconActionButton,
 .iconActionLink {
-  width: 24px;
-  height: 24px;
+  width: 40px;
+  height: 40px;
   border: 0;
-  border-radius: 0;
-  background: var(--background);
+  border-radius: 12px;
+  background: rgba(31, 166, 74, 0.08);
   color: var(--primary);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   text-decoration: none;
   cursor: pointer;
-  transition: transform 0.2s ease, border-color 0.2s ease, color 0.2s ease,
-    background-color 0.2s ease;
+  transition: transform 0.3s ease, border-color 0.3s ease, color 0.3s ease,
+    background-color 0.3s ease;
 }
 
 .iconActionButton:hover,
@@ -55,13 +97,25 @@
   background: #fff;
 }
 
+.iconActionActive {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  box-shadow: 0 10px 22px rgba(31, 166, 74, 0.18);
+}
+
+.iconActionActive:hover {
+  color: var(--primary-foreground);
+  background: var(--primary);
+  border-color: transparent;
+}
+
 .iconActionButton {
   padding: 0;
 }
 
 .compactIcon {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   stroke-width: 2;
 }
 
@@ -81,7 +135,7 @@
   color: var(--foreground);
   text-decoration: none;
   font-weight: 500;
-  transition: color 0.2s;
+  transition: color 0.3s;
   opacity: 0.8;
 }
 
@@ -98,7 +152,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.2s;
+  transition: color 0.3s;
   padding: 4px;
   opacity: 0.8;
 }
@@ -144,7 +198,7 @@
   color: var(--foreground);
   text-decoration: none;
   font-weight: 600;
-  transition: color 0.2s;
+  transition: color 0.3s;
   background: none;
   border: none;
   cursor: pointer;
@@ -168,13 +222,14 @@
 
 .logo {
   min-width: 0;
-  font-size: 28px;
+  font-size: clamp(24px, 7vw, 32px);
   font-weight: 800;
   text-decoration: none;
   color: var(--foreground);
   display: flex;
   align-items: center;
   justify-self: start;
+  white-space: nowrap;
 }
 
 .primaryText {
@@ -195,8 +250,8 @@
   font-size: 14px;
   font-weight: 700;
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease,
-    border-color 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+  transition: background-color 0.3s ease, color 0.3s ease,
+    border-color 0.3s ease, box-shadow 0.3s ease, transform 0.3s ease;
   letter-spacing: 0.5px;
 }
 
@@ -232,13 +287,13 @@
 
 .searchInput {
   width: 100%;
-  min-height: 46px;
+  min-height: 48px;
   padding: 12px 52px 12px 44px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
   font-size: 14px;
   outline: none;
-  transition: border-color 0.2s, box-shadow 0.2s;
+  transition: border-color 0.3s, box-shadow 0.3s;
   background: var(--background);
   color: var(--foreground);
 }
@@ -262,7 +317,7 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: background-color 0.2s ease, color 0.2s ease;
+  transition: background-color 0.3s ease, color 0.3s ease;
 }
 
 .searchClearButton:hover {
@@ -289,7 +344,7 @@
   gap: 4px;
   text-decoration: none;
   color: var(--primary);
-  transition: color 0.2s ease, transform 0.2s ease;
+  transition: color 0.3s ease, transform 0.3s ease;
 }
 
 .actionBtn:hover {
@@ -310,20 +365,31 @@
 
 .badge {
   position: absolute;
-  top: -8px;
-  right: -8px;
-  background-color: var(--primary);
+  top: -6px;
+  right: -6px;
+  background-color: var(--header-badge);
   color: white;
   font-size: 10px;
   font-weight: bold;
-  height: 18px;
-  min-width: 18px;
-  border-radius: 9px;
+  height: 20px;
+  min-width: 20px;
+  border-radius: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0 4px;
   border: 2px solid var(--background);
+}
+
+@media only screen and (min-width: 375px) {
+  .compactWrapper {
+    gap: 10px;
+    padding: 12px 0;
+  }
+
+  .compactActions {
+    gap: 8px;
+  }
 }
 
 .dropdownWrapper {
@@ -400,13 +466,13 @@
 
   .iconActionButton,
   .iconActionLink {
-    width: 32px;
-    height: 32px;
+    width: 44px;
+    height: 44px;
   }
 
   .compactIcon {
-    width: 32px;
-    height: 32px;
+    width: 22px;
+    height: 22px;
   }
 
   .logo {
@@ -428,6 +494,16 @@
 
   .wrapper {
     display: none;
+  }
+}
+
+@media only screen and (max-width: 767px) {
+  .themeFallbackInner {
+    align-items: flex-start;
+  }
+
+  .themeFallbackText {
+    font-size: 12px;
   }
 }
 

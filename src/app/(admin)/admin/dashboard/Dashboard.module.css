@@ -1,18 +1,28 @@
 .dashboard {
   display: flex;
   flex-direction: column;
-  gap: 32px;
+  gap: 20px;
 }
 
 .statsGrid {
   display: grid;
   grid-template-columns: repeat(1, 1fr);
-  gap: 24px;
+  gap: 16px;
+}
+
+@media only screen and (min-width: 375px) {
+  .statsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
 }
 
 @media only screen and (min-width: 768px) {
   .statsGrid {
     grid-template-columns: repeat(2, 1fr);
+  }
+
+  .dashboard {
+    gap: 24px;
   }
 }
 
@@ -26,9 +36,9 @@
   background-color: var(--background);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 24px;
+  padding: 18px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
 }
 
 .statCard:hover {
@@ -80,7 +90,7 @@
   background-color: var(--background);
   border: 1px solid var(--border);
   border-radius: 16px;
-  padding: 24px;
+  padding: 18px;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
 }
 
@@ -118,6 +128,13 @@
   font-size: 14px;
   color: var(--foreground);
   font-weight: 500;
+}
+
+@media only screen and (min-width: 768px) {
+  .statCard,
+  .recentOrders {
+    padding: 24px;
+  }
 }
 
 .table tr:last-child td {

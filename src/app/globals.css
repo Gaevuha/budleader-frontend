@@ -14,6 +14,7 @@
   --color-secondary-foreground: var(--secondary-foreground);
 
   --color-danger: var(--danger);
+  --color-header-badge: var(--header-badge);
   --color-warning: var(--warning);
   --color-success: var(--success);
 
@@ -44,6 +45,7 @@
     --secondary-foreground: #1fa64a;
 
     --danger: #e53935;
+    --header-badge: #e53935;
     --warning: #ff9800;
     --success: #4caf50;
 
@@ -59,12 +61,19 @@
     --brand-shadow: 0 20px 60px rgba(15, 23, 42, 0.08);
     --brand-shadow-soft: 0 12px 32px rgba(15, 23, 42, 0.06);
 
+    --page-glow-top: rgba(31, 166, 74, 0.25);
+    --page-glow-bottom: rgba(31, 166, 74, 0.15);
+    --page-base-start: rgba(31, 166, 74, 0.06);
+    --page-base-middle: #ffffff;
+    --page-base-end: rgba(31, 166, 74, 0.04);
+
     --muted-foreground: #64748b;
 
     --radius: 12px;
+    color-scheme: light;
   }
 
-  .dark {
+  html[data-theme="dark"] {
     --primary-rgb: 31 166 74;
     --background: #0f172a;
     --foreground: #f8fafc;
@@ -85,7 +94,14 @@
     --brand-shadow: 0 24px 70px rgba(2, 6, 23, 0.32);
     --brand-shadow-soft: 0 16px 36px rgba(2, 6, 23, 0.24);
 
+    --page-glow-top: rgba(31, 166, 74, 0.18);
+    --page-glow-bottom: rgba(31, 166, 74, 0.12);
+    --page-base-start: rgba(5, 11, 24, 0.92);
+    --page-base-middle: #0f172a;
+    --page-base-end: rgba(6, 16, 30, 0.98);
+
     --muted-foreground: #cbd5e1;
+    color-scheme: dark;
   }
 
   * {
@@ -96,25 +112,27 @@
 
   body {
     min-height: 100vh;
+    display: flex;
+    flex-direction: column;
     font-family: "Inter", sans-serif;
     color: var(--foreground);
 
     /* 🔥 НОВИЙ градієнт під #1fa64a */
     background: radial-gradient(
         circle at 100% 0,
-        rgba(31, 166, 74, 0.25),
+        var(--page-glow-top),
         transparent 35%
       ),
       radial-gradient(
         circle at 0 100%,
-        rgba(31, 166, 74, 0.15),
+        var(--page-glow-bottom),
         transparent 35%
       ),
       linear-gradient(
         180deg,
-        rgba(31, 166, 74, 0.06) 0%,
-        #ffffff 50%,
-        rgba(31, 166, 74, 0.04) 100%
+        var(--page-base-start) 0%,
+        var(--page-base-middle) 50%,
+        var(--page-base-end) 100%
       );
   }
 
@@ -215,7 +233,7 @@
   background: rgba(255, 255, 255, 0.95);
   color: var(--foreground);
 
-  transition: 0.2s ease;
+  transition: 0.3s ease;
 }
 
 .brand-input:focus,
@@ -248,7 +266,7 @@
   font-weight: 700;
 
   cursor: pointer;
-  transition: 0.2s ease;
+  transition: 0.3s ease;
 }
 
 .brand-button {

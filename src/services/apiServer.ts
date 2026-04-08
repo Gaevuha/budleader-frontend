@@ -2,6 +2,8 @@ import "server-only";
 
 import axios, { type AxiosInstance } from "axios";
 import { cookies, headers } from "next/headers";
+import { parseCatalogViewMode } from "@/services/catalogViewPreference";
+import { parseThemeMode } from "@/services/themePreference";
 import type { ApiResponse, Pagination } from "@/types/api";
 import type { User } from "@/types/auth";
 import type { Category, CategoriesData } from "@/types/category";
@@ -39,11 +41,18 @@ interface CacheEntry<T> {
 type ProductsSSRResult = { products: Product[]; pagination: Pagination | null };
 
 const normalizeServerUser = (
-  raw: User & { _id?: string; name?: string }
+  raw: User & {
+    _id?: string;
+    name?: string;
+    theme?: unknown;
+    catalogViewMode?: unknown;
+  }
 ): User => ({
   ...raw,
   id: raw.id ?? raw._id ?? "",
   firstName: raw.firstName ?? raw.name,
+  theme: parseThemeMode(raw.theme) ?? undefined,
+  catalogViewMode: parseCatalogViewMode(raw.catalogViewMode) ?? undefined,
 });
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

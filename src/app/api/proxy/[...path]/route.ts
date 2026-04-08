@@ -11,6 +11,7 @@ const API_BASE_URL = normalizeApiBaseUrl(
 
 const HOP_BY_HOP_HEADERS = new Set([
   "connection",
+  "content-encoding",
   "keep-alive",
   "proxy-authenticate",
   "proxy-authorization",
@@ -24,6 +25,12 @@ const HOP_BY_HOP_HEADERS = new Set([
 
 const COOKIE_HEADER_NAME = "set-cookie";
 
+const OAUTH_AUTHORIZE_HOSTS = new Set([
+  "accounts.google.com",
+  "www.facebook.com",
+  "facebook.com",
+]);
+
 const buildTargetUrl = (
   pathParts: string[],
   searchParams: URLSearchParams
@@ -33,6 +40,70 @@ const buildTargetUrl = (
   const search = searchParams.toString();
 
   return search ? `${base}/${path}?${search}` : `${base}/${path}`;
+};
+
+const buildRedirectLocation = (location: string): string => {
+  if (/^https?:\/\//i.test(location)) {
+    return location;
+  }
+
+  return new URL(location, API_BASE_URL).toString();
+};
+
+const buildProxyExternalBaseUrl = (request: NextRequest): string => {
+  const forwardedProto = request.headers
+    .get("x-forwarded-proto")
+    ?.split(",")[0];
+  const forwardedHost = request.headers.get("x-forwarded-host")?.split(",")[0];
+  const origin = request.headers.get("origin");
+
+  if (origin) {
+    try {
+      return new URL(origin).origin;
+    } catch {
+      // Fall back to forwarded headers or request URL.
+    }
+  }
+
+  if (forwardedProto && forwardedHost) {
+    return `${forwardedProto.trim()}://${forwardedHost.trim()}`;
+  }
+
+  return request.nextUrl.origin;
+};
+
+const rewriteOAuthAuthorizeRedirect = (
+  location: string,
+  request: NextRequest
+): string => {
+  let redirectUrl: URL;
+
+  try {
+    redirectUrl = new URL(buildRedirectLocation(location));
+  } catch {
+    return buildRedirectLocation(location);
+  }
+
+  if (!OAUTH_AUTHORIZE_HOSTS.has(redirectUrl.hostname)) {
+    return redirectUrl.toString();
+  }
+
+  const redirectUri = redirectUrl.searchParams.get("redirect_uri");
+
+  if (!redirectUri) {
+    return redirectUrl.toString();
+  }
+
+  const proxyExternalBaseUrl = buildProxyExternalBaseUrl(request);
+  const callbackPath =
+    request.nextUrl.pathname.replace(/\/+$/, "") + "/callback";
+
+  redirectUrl.searchParams.set(
+    "redirect_uri",
+    `${proxyExternalBaseUrl}${callbackPath}`
+  );
+
+  return redirectUrl.toString();
 };
 
 const toForwardHeaders = (request: NextRequest): Headers => {
@@ -48,11 +119,19 @@ const toForwardHeaders = (request: NextRequest): Headers => {
     headers.set(key, value);
   });
 
+  headers.set(
+    "x-forwarded-host",
+    request.headers.get("host") ?? request.nextUrl.host
+  );
+  headers.set("x-forwarded-proto", request.nextUrl.protocol.replace(/:$/, ""));
+  headers.set("x-forwarded-port", request.nextUrl.port || "");
+
   return headers;
 };
 
 const buildClientResponse = async (
-  upstream: Response
+  upstream: Response,
+  request: NextRequest
 ): Promise<NextResponse> => {
   const headers = new Headers();
   const upstreamHeaders = upstream.headers as Headers & {
@@ -96,6 +175,17 @@ const buildClientResponse = async (
     headers.append(COOKIE_HEADER_NAME, rewriteSetCookiePath(cookie));
   }
 
+  const location = upstream.headers.get("location");
+
+  if (location && upstream.status >= 300 && upstream.status < 400) {
+    headers.set("location", rewriteOAuthAuthorizeRedirect(location, request));
+
+    return new NextResponse(null, {
+      status: upstream.status,
+      headers,
+    });
+  }
+
   const contentType = upstream.headers.get("content-type") ?? "";
   const body =
     contentType.includes("application/json") || contentType.startsWith("text/")
@@ -125,9 +215,10 @@ const proxyRequest = async (
       method,
       headers: toForwardHeaders(request),
       body,
+      redirect: "manual",
     });
 
-    return buildClientResponse(upstream);
+    return buildClientResponse(upstream, request);
   } catch (error) {
     console.error("[api/proxy] request failed", {
       method: request.method,

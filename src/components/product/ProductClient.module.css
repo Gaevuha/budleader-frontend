@@ -303,7 +303,7 @@
   align-items: center;
   justify-content: center;
   padding: 2px;
-  transition: color 0.15s ease, transform 0.15s ease;
+  transition: color 0.3s ease, transform 0.3s ease;
 }
 
 .ratingStarBtn:hover {

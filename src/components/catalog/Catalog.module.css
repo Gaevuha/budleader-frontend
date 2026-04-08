@@ -4,12 +4,7 @@
 
 .container {
   padding: 20px 0 56px;
-  background: radial-gradient(
-      circle at top,
-      rgba(34, 197, 94, 0.05),
-      transparent 34%
-    ),
-    #f8fafc;
+
   min-height: calc(100vh - 120px);
 }
 
@@ -30,7 +25,7 @@
 .breadcrumbs a {
   color: #64748b;
   text-decoration: none;
-  transition: color 0.2s;
+  transition: color 0.3s;
 }
 
 .breadcrumbs a:hover {
@@ -57,10 +52,9 @@
   background: linear-gradient(180deg, #f7fff9 0%, #ffffff 42%, #f3fbf6 100%);
   z-index: 520;
   transform: translateX(-104%);
-  transition: transform 0.24s ease, box-shadow 0.24s ease;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
   display: flex;
   flex-direction: column;
-  box-shadow: none;
   border-right: 1px solid var(--brand-line-strong);
 }
 
@@ -134,7 +128,7 @@
 }
 
 .chevron {
-  transition: transform 0.2s ease;
+  transition: transform 0.3s ease;
 }
 
 .open {
@@ -160,8 +154,8 @@
   border-radius: 16px;
   background: rgba(255, 255, 255, 0.72);
   border: 1px solid var(--brand-line);
-  transition: border-color 0.2s ease, background-color 0.2s ease,
-    transform 0.2s ease;
+  transition: border-color 0.3s ease, background-color 0.3s ease,
+    transform 0.3s ease;
 }
 
 .checkboxRow:hover {
@@ -183,8 +177,8 @@
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  transition: background-color 0.2s ease, border-color 0.2s ease,
-    box-shadow 0.2s ease;
+  transition: background-color 0.3s ease, border-color 0.3s ease,
+    box-shadow 0.3s ease;
 }
 
 .checkboxRow input[type="checkbox"]::after {
@@ -194,7 +188,7 @@
   border-radius: 3px;
   background: #fff;
   transform: scale(0);
-  transition: transform 0.18s ease;
+  transition: transform 0.3s ease;
 }
 
 .checkboxRow input[type="checkbox"]:checked {
@@ -277,7 +271,7 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s;
 }
 
 .clearBtn:hover {
@@ -295,7 +289,7 @@
   font-size: 14px;
   font-weight: 600;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.3s;
 }
 
 .applyBtn:hover {
@@ -395,6 +389,7 @@
   flex-direction: column;
   align-items: flex-start;
   gap: 8px;
+  width: 100%;
 }
 
 .sortLabel {
@@ -441,7 +436,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  transition: color 0.2s;
+  transition: color 0.3s;
 }
 
 .viewBtn:hover {
@@ -457,7 +452,7 @@
 .grid {
   display: grid;
   grid-template-columns: 1fr;
-  gap: 16px;
+  gap: 14px;
   margin-bottom: 32px;
   list-style: none;
   margin: 0 0 32px;
@@ -529,7 +524,7 @@
   border-radius: var(--radius-sm);
   font-weight: 500;
   cursor: pointer;
-  transition: background 0.2s;
+  transition: background 0.3s;
 }
 
 .resetBtn:hover {
@@ -548,45 +543,71 @@
 
 .loadMoreWrap {
   display: flex;
+  align-items: center;
   justify-content: center;
   margin-top: 8px;
+  width: 158px;
+  height: 48px;
+  margin-left: auto;
+  margin-right: auto;
+  flex-shrink: 0;
 }
 
 .loadMoreButton {
-  min-width: 200px;
-  min-height: 48px;
-  padding: 0 22px;
-  border: 0;
-  border-radius: 16px;
-  background: #0f172a;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  gap: 10px;
+  gap: 8px;
+  width: 158px;
+  height: 48px;
+  padding: 6px 12px;
+  border: 1px solid var(--primary);
+  border-radius: 8px;
+  background: var(--primary);
+  color: #fff;
+  font-size: 16px;
+  font-weight: 500;
+  line-height: 1.5;
   cursor: pointer;
-  transition: transform 0.2s ease, opacity 0.2s ease, background-color 0.2s ease;
+  transition: transform 0.3s ease, opacity 0.3s ease, background-color 0.3s ease,
+    border-color 0.3s ease;
 }
 
 .loadMoreButton:hover:not(:disabled) {
-  background: var(--primary);
+  background: var(--primary-hover);
   transform: translateY(-2px);
 }
 
 .loadMoreButton:disabled {
   cursor: wait;
-  opacity: 0.88;
+  opacity: 0.92;
+}
+
+.loadMorePending {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 158px;
+  height: 48px;
 }
 
 .loadMoreLoader {
-  width: 18px;
-  height: 18px;
-  border: 2px solid rgba(255, 255, 255, 0.32);
-  border-top-color: #fff;
-  border-radius: 50%;
-  animation: spin 0.9s linear infinite;
+  top: 0;
+  width: 56px;
+  height: 24px;
+  margin: 0;
+}
+
+.visuallyHidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 
 .pagination {
@@ -604,9 +625,9 @@
 }
 
 .pageLink {
-  min-width: 40px;
-  height: 40px;
-  padding: 0 12px;
+  min-width: 38px;
+  height: 38px;
+  padding: 0 10px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -617,7 +638,7 @@
   font-weight: 500;
   color: #475569;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.3s;
   text-decoration: none;
 }
 
@@ -641,6 +662,20 @@
 .pageItemActive .pageLink:hover {
   background: var(--primary);
   color: white;
+}
+
+@media only screen and (min-width: 375px) {
+  .pagination {
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 12px;
+    scrollbar-width: none;
+  }
+
+  .pagination::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 @media only screen and (min-width: 768px) {
@@ -680,6 +715,7 @@
     flex-direction: row;
     align-items: center;
     gap: 12px;
+    width: auto;
   }
 
   .sortSelect {
@@ -690,6 +726,13 @@
   .grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 20px;
+  }
+
+  .pagination {
+    justify-content: center;
+    flex-wrap: wrap;
+    overflow: visible;
+    padding-bottom: 8px;
   }
 
   .loadMoreWrap {
@@ -730,7 +773,7 @@
   }
 
   .grid {
-    grid-template-columns: repeat(4, 1fr);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 24px;
   }
 }

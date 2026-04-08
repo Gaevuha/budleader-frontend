@@ -1,5 +1,5 @@
 .container {
-  padding: 24px;
+  padding: 16px;
   background-color: var(--background);
   border-radius: var(--radius-lg);
   border: 1px solid var(--border);
@@ -8,7 +8,8 @@
 
 .header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-direction: column;
   gap: 12px;
   margin-bottom: 24px;
 }
@@ -26,7 +27,7 @@
 
 .formRow {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr;
   gap: 16px;
 }
 
@@ -59,7 +60,8 @@
 
 .actions {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
+  flex-direction: column;
   gap: 8px;
   padding-top: 16px;
   border-top: 1px solid var(--border);
@@ -72,8 +74,35 @@
   opacity: 0.65;
 }
 
-@media only screen and (max-width: 767px) {
+.helperText {
+  margin: 0;
+  font-size: 13px;
+  color: var(--foreground);
+  opacity: 0.7;
+}
+
+@media only screen and (min-width: 375px) {
+  .container {
+    padding: 20px;
+  }
+}
+
+@media only screen and (min-width: 768px) {
+  .container {
+    padding: 24px;
+  }
+
+  .header {
+    align-items: center;
+    flex-direction: row;
+  }
+
   .formRow {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .actions {
+    align-items: center;
+    flex-direction: row;
   }
 }

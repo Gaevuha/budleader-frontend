@@ -239,6 +239,64 @@ const buildFetchBody = (
   return JSON.stringify(body);
 };
 
+const summarizeFetchBody = (
+  body: BodyInit | object | null | undefined
+): unknown => {
+  if (body == null) {
+    return null;
+  }
+
+  if (typeof body === "string") {
+    return body;
+  }
+
+  if (body instanceof URLSearchParams) {
+    return body.toString();
+  }
+
+  if (body instanceof FormData) {
+    return Array.from(body.entries()).map(([key, value]) => ({
+      key,
+      value: typeof value === "string" ? value : `[File:${value.name}]`,
+    }));
+  }
+
+  if (body instanceof Blob) {
+    return {
+      type: body.type,
+      size: body.size,
+    };
+  }
+
+  if (body instanceof ArrayBuffer || ArrayBuffer.isView(body)) {
+    return "[binary body]";
+  }
+
+  return body;
+};
+
+const logApiFetchDebug = (
+  input: string,
+  method: string,
+  status: number,
+  payload: unknown,
+  requestBody: BodyInit | object | null | undefined
+) => {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  console.error("[apiFetch] request failed", {
+    input,
+    method,
+    status,
+    message:
+      extractApiMessage(payload) ?? `Request failed with status ${status}`,
+    payload,
+    requestBody: summarizeFetchBody(requestBody),
+  });
+};
+
 const refreshAuthSession = async (): Promise<void> => {
   if (!refreshPromise) {
     refreshPromise = (async () => {
@@ -329,11 +387,14 @@ export async function apiFetch<T>(
     headers.set("Accept", "application/json");
   }
 
+  const requestBody = buildFetchBody(body, headers);
+  const method = (rest.method ?? "GET").toUpperCase();
+
   const response = await fetch(input, {
     ...rest,
     credentials: "include",
     headers,
-    body: buildFetchBody(body, headers),
+    body: requestBody,
     cache: rest.cache ?? "no-store",
   });
 
@@ -353,6 +414,8 @@ export async function apiFetch<T>(
   }
 
   if (!response.ok) {
+    logApiFetchDebug(input, method, response.status, payload, body);
+
     throw new ApiFetchError(
       extractApiMessage(payload) ??
         `Request failed with status ${response.status}`,
@@ -435,6 +498,7 @@ const endpointBackoffUntil = new Map<string, number>();
 
 interface RetriableRequestConfig extends InternalAxiosRequestConfig {
   _retry?: boolean;
+  suppressDebugErrorLog?: boolean;
 }
 
 const toPathname = (url: string | undefined): string => {
@@ -575,6 +639,10 @@ const logAxiosDebug = (
     return;
   }
 
+  if (isCanceledRequestError(error)) {
+    return;
+  }
+
   const axiosError = axios.isAxiosError(error) ? error : null;
 
   console.error(label, {
@@ -589,6 +657,56 @@ const logAxiosDebug = (
     params: axiosError?.config?.params,
     data: axiosError?.response?.data,
     error,
+  });
+};
+
+const isCanceledRequestError = (error: unknown): boolean => {
+  if (axios.isCancel(error)) {
+    return true;
+  }
+
+  const axiosError = axios.isAxiosError(error) ? error : null;
+  const fallbackRecord =
+    error && typeof error === "object"
+      ? (error as { code?: unknown; name?: unknown; message?: unknown })
+      : null;
+
+  const code = axiosError?.code ?? fallbackRecord?.code;
+  const name = axiosError?.name ?? fallbackRecord?.name;
+  const message = axiosError?.message ?? fallbackRecord?.message;
+
+  return (
+    code === "ERR_CANCELED" ||
+    name === "AbortError" ||
+    message === "canceled" ||
+    message === "The operation was aborted."
+  );
+};
+
+const logAxiosRateLimit = (
+  label: string,
+  error: AxiosError,
+  extra?: Record<string, unknown>
+) => {
+  if (process.env.NODE_ENV === "production") {
+    return;
+  }
+
+  const retryAfterHeader =
+    error.response?.headers?.["retry-after"] ??
+    error.response?.headers?.["Retry-After"];
+
+  console.warn(label, {
+    ...extra,
+    message: error.message,
+    code: error.code,
+    status: error.response?.status,
+    url: error.config?.url,
+    method: error.config?.method,
+    params: error.config?.params,
+    retryAfter: retryAfterHeader,
+    responseHeaders: error.response?.headers,
+    data: error.response?.data,
   });
 };
 
@@ -627,6 +745,17 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 
   const endpointBackoff = endpointBackoffUntil.get(path) ?? 0;
   if (endpointBackoff > now) {
+    if (process.env.NODE_ENV !== "production") {
+      console.warn("[api] skipped request due to local 429 backoff", {
+        path,
+        url: config.url,
+        method: config.method,
+        params: config.params,
+        backoffUntil: endpointBackoff,
+        retryInMs: endpointBackoff - now,
+      });
+    }
+
     config.adapter = async () => {
       throw buildLocalRateLimitError(config, path);
     };
@@ -662,7 +791,14 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
         const axiosError = rawError as AxiosError;
 
         if (axiosError.response?.status === 429) {
-          endpointBackoffUntil.set(path, Date.now() + CATALOG_BACKOFF_MS);
+          const backoffUntil = Date.now() + CATALOG_BACKOFF_MS;
+          endpointBackoffUntil.set(path, backoffUntil);
+          logAxiosRateLimit("[api] upstream 429 received", axiosError, {
+            path,
+            cacheKey: key,
+            backoffUntil,
+            retryInMs: CATALOG_BACKOFF_MS,
+          });
         }
 
         throw rawError;
@@ -681,6 +817,10 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
 api.interceptors.response.use(
   (response) => response,
   async (error: AxiosError) => {
+    if (isCanceledRequestError(error)) {
+      return Promise.reject(error);
+    }
+
     const originalRequest = error.config as RetriableRequestConfig | undefined;
     const requestPath = toPathname(originalRequest?.url);
 
@@ -721,11 +861,22 @@ api.interceptors.response.use(
       isPublicEndpointPath(requestPath) ||
       isAuthEndpointPath(requestPath)
     ) {
-      logAxiosDebug("[api] request rejected", error, {
-        path: requestPath,
-        url: originalRequest?.url,
-        params: originalRequest?.params,
-      });
+      if (error.response?.status === 429) {
+        logAxiosRateLimit("[api] request rate limited", error, {
+          path: requestPath,
+          url: originalRequest?.url,
+          params: originalRequest?.params,
+          suppressDebugErrorLog: originalRequest?.suppressDebugErrorLog,
+        });
+      }
+
+      if (!originalRequest?.suppressDebugErrorLog) {
+        logAxiosDebug("[api] request rejected", error, {
+          path: requestPath,
+          url: originalRequest?.url,
+          params: originalRequest?.params,
+        });
+      }
 
       return Promise.reject(error);
     }

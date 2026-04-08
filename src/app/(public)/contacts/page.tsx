@@ -1,35 +1,45 @@
 import type { Metadata } from "next";
-import { Clock3, Mail, MapPin, Phone } from "lucide-react";
+import Link from "next/link";
+import { Clock3, Mail, MapPin, Phone, type LucideIcon } from "lucide-react";
 
 import { Container } from "@/components/layout/Container/Container";
+import {
+  helpQuickLinks,
+  normalizePhoneHref,
+  publicSupportSettings,
+  supportChannels,
+} from "@/services/supportContent";
 import styles from "./ContactsPage.module.css";
 
-const contactCards = [
+interface ContactCard {
+  icon: LucideIcon;
+  title: string;
+  primary: string;
+  secondary: string;
+}
+
+const contactCards: ContactCard[] = [
   {
     icon: Phone,
     title: "Телефони",
-    primary: "+380 (68) 686-84-00",
-    secondary: "+380 (99) 123-45-67",
+    primary: publicSupportSettings.contactPhone,
+    secondary: "Приймаємо звернення по замовленнях, доставці та підбору.",
   },
   {
     icon: Mail,
     title: "Email",
-    primary: "info@budleader.com.ua",
-    secondary: "sales@budleader.com.ua",
+    primary: publicSupportSettings.notificationEmail,
+    secondary: "Пишіть для консультації, документів і уточнення реквізитів.",
   },
   {
     icon: MapPin,
     title: "Адреса",
-    primary: "Львів, вул. Промислова, 24",
+    primary: publicSupportSettings.officeAddress,
     secondary: "Склад і відвантаження за попереднім дзвінком",
   },
 ];
 
-const workSchedule = [
-  "Пн–Пт: 08:30–18:00",
-  "Сб: 09:00–15:00",
-  "Нд: прийом онлайн-заявок",
-];
+const primaryPhoneHref = normalizePhoneHref(publicSupportSettings.contactPhone);
 
 export const metadata: Metadata = {
   title: "Контакти | Будлідер",
@@ -53,17 +63,17 @@ export default function ContactsPage() {
               <p className={styles.heroDescription}>
                 Один екран для дзвінків, пошти, адреси відвантаження і робочого
                 графіка. Швидкі контакти оформлені в тому ж стилі, що й каталог
-                та сторінка послуг.
+                та сторінка послуг, а дані синхронізовані з центром підтримки.
               </p>
               <ul className={styles.heroActions}>
                 <li>
-                  <a href="tel:+380686868400" className="brand-button">
+                  <a href={primaryPhoneHref} className="brand-button">
                     Зателефонувати
                   </a>
                 </li>
                 <li>
                   <a
-                    href="mailto:info@budleader.com.ua"
+                    href={`mailto:${publicSupportSettings.notificationEmail}`}
                     className="brand-button-secondary"
                   >
                     Написати на email
@@ -112,7 +122,7 @@ export default function ContactsPage() {
                 </div>
               </div>
               <ul className={styles.scheduleList}>
-                {workSchedule.map((item) => (
+                {publicSupportSettings.workSchedule.map((item) => (
                   <li key={item} className={styles.scheduleItem}>
                     {item}
                   </li>
@@ -124,31 +134,25 @@ export default function ContactsPage() {
               <p className={styles.sectionEyebrow}>Швидка навігація</p>
               <h2 className={styles.sectionTitle}>Куди краще писати</h2>
               <ul className={styles.supportList}>
-                <li className={styles.supportItem}>
-                  <span className={styles.supportLabel}>
-                    Замовлення товарів
-                  </span>
-                  <span className={styles.supportValue}>
-                    sales@budleader.com.ua
-                  </span>
-                </li>
-                <li className={styles.supportItem}>
-                  <span className={styles.supportLabel}>
-                    Послуги спецтехніки
-                  </span>
-                  <span className={styles.supportValue}>
-                    info@budleader.com.ua
-                  </span>
-                </li>
-                <li className={styles.supportItem}>
-                  <span className={styles.supportLabel}>
-                    Терміновий дзвінок
-                  </span>
-                  <span className={styles.supportValue}>
-                    +380 (68) 686-84-00
-                  </span>
-                </li>
+                {supportChannels.map((channel) => (
+                  <li key={channel.id} className={styles.supportItem}>
+                    <span className={styles.supportLabel}>{channel.title}</span>
+                    <span className={styles.supportValue}>{channel.note}</span>
+                  </li>
+                ))}
               </ul>
+
+              <div className={styles.helpQuickNav}>
+                {helpQuickLinks.map((link) => (
+                  <Link
+                    key={link.id}
+                    href={link.href}
+                    className={styles.helpQuickLink}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
         </Container>

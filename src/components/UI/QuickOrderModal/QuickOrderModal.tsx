@@ -162,7 +162,7 @@ export function QuickOrderModal({
           initial={{ y: 24, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
           exit={{ y: 24, opacity: 0 }}
-          transition={{ duration: 0.2 }}
+          transition={{ duration: 0.3 }}
           onClick={(event) => event.stopPropagation()}
         >
           <button className={styles.closeBtn} onClick={onClose}>

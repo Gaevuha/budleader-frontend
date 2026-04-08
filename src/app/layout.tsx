@@ -1,9 +1,16 @@
 import type { Metadata } from "next";
+import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
+import Script from "next/script";
 import "./globals.css";
 import { Providers } from "@/store/providers";
 import { AppChrome } from "@/components/layout/AppChrome/AppChrome";
-import { getCategories } from "@/services/apiServer";
+import { getCategories, getUser } from "@/services/apiServer";
+import {
+  buildGuestThemeBootstrapScript,
+  DEFAULT_THEME_MODE,
+  resolveThemeFromCookieHeader,
+} from "@/services/themePreference";
 import type { Category } from "@/types/category";
 
 const geistSans = Geist({
@@ -33,15 +40,34 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const categories = await getCategories();
+  const cookieStore = await cookies();
+  const [categories, currentUser] = await Promise.all([
+    getCategories(),
+    getUser(),
+  ]);
+  const guestTheme =
+    resolveThemeFromCookieHeader(cookieStore.toString()) ?? DEFAULT_THEME_MODE;
+  const initialTheme = currentUser
+    ? currentUser.theme ?? DEFAULT_THEME_MODE
+    : guestTheme;
   const resolvedCategories =
     categories.length === 0 ? staticLayoutCategories : categories;
 
   return (
-    <html lang="en">
+    <html lang="en" data-theme={initialTheme} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        <Providers>
-          <AppChrome categories={resolvedCategories}>{children}</AppChrome>
+        {!currentUser ? (
+          <Script id="theme-bootstrap" strategy="beforeInteractive">
+            {buildGuestThemeBootstrapScript(initialTheme)}
+          </Script>
+        ) : null}
+        <Providers initialTheme={initialTheme} initialUser={currentUser}>
+          <AppChrome
+            categories={resolvedCategories}
+            initialTheme={initialTheme}
+          >
+            {children}
+          </AppChrome>
         </Providers>
       </body>
     </html>

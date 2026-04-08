@@ -46,7 +46,7 @@
   transform: translate3d(0, var(--stack-offset, 0), 0)
     scale(var(--stack-scale, 1));
   opacity: var(--stack-opacity, 1);
-  transition: transform 220ms ease, opacity 220ms ease;
+  transition: transform 0.3s ease, opacity 0.3s ease;
   animation: slide-in 180ms ease;
 }
 
