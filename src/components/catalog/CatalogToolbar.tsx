@@ -9,6 +9,7 @@ interface CatalogToolbarProps {
   productsCount: number;
   sortOrder: string;
   onSortOrderChange: (value: string) => void;
+  showViewToggle: boolean;
   viewMode: "grid" | "list";
   onViewModeChange: (value: "grid" | "list") => void;
 }
@@ -18,6 +19,7 @@ export function CatalogToolbar({
   productsCount,
   sortOrder,
   onSortOrderChange,
+  showViewToggle,
   viewMode,
   onViewModeChange,
 }: CatalogToolbarProps) {
@@ -43,24 +45,26 @@ export function CatalogToolbar({
           </select>
         </div>
 
-        <div className={styles.viewToggle}>
-          <button
-            className={`${styles.viewBtn} ${
-              viewMode === "grid" ? styles.viewBtnActive : ""
-            }`}
-            onClick={() => onViewModeChange("grid")}
-          >
-            <GridIcon size={18} />
-          </button>
-          <button
-            className={`${styles.viewBtn} ${
-              viewMode === "list" ? styles.viewBtnActive : ""
-            }`}
-            onClick={() => onViewModeChange("list")}
-          >
-            <ListIcon size={18} />
-          </button>
-        </div>
+        {showViewToggle ? (
+          <div className={styles.viewToggle}>
+            <button
+              className={`${styles.viewBtn} ${
+                viewMode === "grid" ? styles.viewBtnActive : ""
+              }`}
+              onClick={() => onViewModeChange("grid")}
+            >
+              <GridIcon size={18} />
+            </button>
+            <button
+              className={`${styles.viewBtn} ${
+                viewMode === "list" ? styles.viewBtnActive : ""
+              }`}
+              onClick={() => onViewModeChange("list")}
+            >
+              <ListIcon size={18} />
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

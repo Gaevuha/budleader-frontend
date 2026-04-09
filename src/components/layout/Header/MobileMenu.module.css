@@ -9,19 +9,86 @@
 }
 
 .drawer {
+  --menu-bg: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  --menu-surface: rgba(255, 255, 255, 0.86);
+  --menu-surface-strong: #ffffff;
+  --menu-surface-soft: rgba(255, 255, 255, 0.72);
+  --menu-border: rgba(148, 163, 184, 0.24);
+  --menu-border-strong: rgba(var(--primary-rgb), 0.34);
+  --menu-border-soft: rgba(226, 232, 240, 0.9);
+  --menu-text: #0f172a;
+  --menu-text-muted: #64748b;
+  --menu-title: var(--primary-hover);
+  --menu-secondary-bg: rgba(15, 23, 42, 0.08);
+  --menu-secondary-hover: rgba(15, 23, 42, 0.12);
+  --menu-shadow: -24px 0 64px rgba(15, 23, 42, 0.18);
+  --menu-card-shadow: 0 12px 24px rgba(148, 163, 184, 0.16);
+  --menu-link-shadow: 0 12px 24px rgba(148, 163, 184, 0.14);
+  --menu-active-shadow: 0 12px 26px rgba(var(--primary-rgb), 0.16);
+  --menu-active-bg: linear-gradient(
+    90deg,
+    rgba(var(--primary-rgb), 0.16) 0%,
+    #ffffff 100%
+  );
+  --menu-quick-active-bg: linear-gradient(
+    180deg,
+    rgba(var(--primary-rgb), 0.12) 0%,
+    #ffffff 100%
+  );
   position: fixed;
   top: 0;
   right: 0;
   width: min(88vw, 360px);
   height: 100vh;
-  padding: 20px 18px 28px;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
-  box-shadow: -24px 0 64px rgba(15, 23, 42, 0.18);
+  height: 100dvh;
+  max-height: 100dvh;
+  padding: max(20px, env(safe-area-inset-top)) 18px
+    max(28px, env(safe-area-inset-bottom));
+  background: var(--menu-bg);
+  box-shadow: var(--menu-shadow);
   display: flex;
   flex-direction: column;
   gap: 18px;
   z-index: 630;
   will-change: transform, opacity;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  color: var(--menu-text);
+}
+
+.drawer[data-theme="dark"] {
+  --menu-bg: linear-gradient(180deg, #0f172a 0%, #16273d 100%);
+  --menu-surface: rgba(19, 33, 51, 0.9);
+  --menu-surface-strong: rgba(22, 39, 61, 0.98);
+  --menu-surface-soft: rgba(19, 33, 51, 0.82);
+  --menu-border: rgba(71, 85, 105, 0.5);
+  --menu-border-strong: rgba(var(--primary-rgb), 0.38);
+  --menu-border-soft: rgba(51, 65, 85, 0.9);
+  --menu-text: #f8fafc;
+  --menu-text-muted: #cbd5e1;
+  --menu-title: #b8e0d4;
+  --menu-secondary-bg: rgba(148, 163, 184, 0.14);
+  --menu-secondary-hover: rgba(148, 163, 184, 0.2);
+  --menu-shadow: -24px 0 64px rgba(2, 6, 23, 0.52);
+  --menu-card-shadow: 0 12px 28px rgba(2, 6, 23, 0.28);
+  --menu-link-shadow: 0 12px 28px rgba(2, 6, 23, 0.24);
+  --menu-active-shadow: 0 12px 28px rgba(var(--primary-rgb), 0.18);
+  --menu-active-bg: linear-gradient(
+    90deg,
+    rgba(var(--primary-rgb), 0.28) 0%,
+    rgba(22, 39, 61, 0.98) 100%
+  );
+  --menu-quick-active-bg: linear-gradient(
+    180deg,
+    rgba(var(--primary-rgb), 0.22) 0%,
+    rgba(19, 33, 51, 0.96) 100%
+  );
+}
+
+.overlay[data-theme="dark"] {
+  background: rgba(2, 6, 23, 0.62);
 }
 
 .header {
@@ -38,11 +105,11 @@
   font-size: 28px;
   font-weight: 800;
   line-height: 1;
-  color: #0f172a;
+  color: var(--menu-text);
 }
 
 .brandText {
-  color: #0f172a;
+  color: var(--menu-text);
 }
 
 .brandAccent {
@@ -54,11 +121,9 @@
 .closeButton {
   width: 24px;
   height: 24px;
-  /* border: 1px solid rgba(148, 163, 184, 0.35);
-  border-radius: 12px; */
   border: none;
-  background: rgba(255, 255, 255, 0.82);
-  color: #0f172a;
+  background: var(--menu-surface);
+  color: var(--menu-text);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -75,8 +140,7 @@
 
 .closeButton:hover {
   transform: rotate(90deg);
-  background: #fff;
-  border-color: rgba(22, 163, 74, 0.35);
+  background: var(--menu-surface-strong);
 }
 
 .section {
@@ -87,7 +151,7 @@
 
 .sectionTitle {
   margin: 0;
-  color: #166534;
+  color: var(--menu-title);
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.08em;
@@ -106,10 +170,10 @@
   align-items: center;
   gap: 12px;
   padding: 14px 16px;
-  border: 1px solid rgba(148, 163, 184, 0.24);
+  border: 1px solid var(--menu-border);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.86);
-  color: #0f172a;
+  background: var(--menu-surface);
+  color: var(--menu-text);
   text-decoration: none;
   cursor: pointer;
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
@@ -126,26 +190,22 @@
 .quickActionText {
   font-size: 12px;
   line-height: 1.45;
-  color: #64748b;
+  color: var(--menu-text-muted);
 }
 
 .quickAction:hover,
 .themeButton:hover,
 .profileCard:hover {
   transform: translateY(-2px);
-  border-color: rgba(22, 163, 74, 0.28);
-  background: #ffffff;
-  box-shadow: 0 12px 24px rgba(148, 163, 184, 0.16);
+  border-color: var(--menu-border-strong);
+  background: var(--menu-surface-strong);
+  box-shadow: var(--menu-card-shadow);
 }
 
 .quickActionActive {
-  border-color: rgba(22, 163, 74, 0.34);
-  background: linear-gradient(
-    180deg,
-    rgba(240, 253, 244, 0.98) 0%,
-    #ffffff 100%
-  );
-  box-shadow: 0 12px 26px rgba(34, 197, 94, 0.12);
+  border-color: var(--menu-border-strong);
+  background: var(--menu-quick-active-bg);
+  box-shadow: var(--menu-active-shadow);
 }
 
 .countBadge {
@@ -175,13 +235,13 @@
 .link {
   display: block;
   padding: 14px 14px;
-  color: #0f172a;
+  color: var(--menu-text);
   text-decoration: none;
   font-size: 16px;
   font-weight: 600;
-  border: 1px solid rgba(226, 232, 240, 0.9);
+  border: 1px solid var(--menu-border-soft);
   border-radius: 16px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--menu-surface-soft);
   transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
     border-color 0.3s cubic-bezier(0.4, 0, 0.2, 1),
@@ -192,20 +252,16 @@
 .link:hover {
   transform: translateX(4px);
   color: var(--primary);
-  border-color: rgba(22, 163, 74, 0.24);
-  background: #ffffff;
-  box-shadow: 0 12px 24px rgba(148, 163, 184, 0.14);
+  border-color: var(--menu-border-strong);
+  background: var(--menu-surface-strong);
+  box-shadow: var(--menu-link-shadow);
 }
 
 .linkActive {
   color: var(--primary);
-  border-color: rgba(22, 163, 74, 0.34);
-  background: linear-gradient(
-    90deg,
-    rgba(220, 252, 231, 0.95) 0%,
-    #ffffff 100%
-  );
-  box-shadow: inset 3px 0 0 var(--primary), 0 12px 24px rgba(34, 197, 94, 0.12);
+  border-color: var(--menu-border-strong);
+  background: var(--menu-active-bg);
+  box-shadow: inset 3px 0 0 var(--primary), var(--menu-active-shadow);
 }
 
 .profileLabel,
@@ -216,13 +272,13 @@
 
 .profileLabel {
   font-size: 12px;
-  color: #64748b;
+  color: var(--menu-text-muted);
 }
 
 .profileValue {
   font-size: 14px;
   font-weight: 600;
-  color: #0f172a;
+  color: var(--menu-text);
 }
 
 .primaryButton,
@@ -245,8 +301,8 @@
 }
 
 .secondaryButton {
-  background: rgba(15, 23, 42, 0.08);
-  color: #0f172a;
+  background: var(--menu-secondary-bg);
+  color: var(--menu-text);
 }
 
 .primaryButton:hover,
@@ -259,7 +315,7 @@
 }
 
 .secondaryButton:hover {
-  background: rgba(15, 23, 42, 0.12);
+  background: var(--menu-secondary-hover);
 }
 
 .primaryButton:active,
@@ -270,11 +326,11 @@
 .footer {
   margin-top: auto;
   padding-top: 18px;
-  border-top: 1px solid rgba(226, 232, 240, 0.9);
+  border-top: 1px solid var(--menu-border-soft);
 }
 
 .contactLink {
-  color: #0f172a;
+  color: var(--menu-text);
   font-size: 16px;
   font-weight: 700;
   text-decoration: none;
@@ -288,17 +344,33 @@
 .footerText {
   margin-top: 8px;
   font-size: 13px;
-  color: #64748b;
+  color: var(--menu-text-muted);
 }
 
-@media only screen and (min-width: 1440px) {
-  .overlay,
+@media only screen and (min-width: 375px) {
   .drawer {
-    display: none;
+    width: min(84vw, 380px);
+  }
+
+  .closeButton {
+    width: 28px;
+    height: 28px;
+    border-radius: 10px;
+  }
+
+  .closeButton :global(svg) {
+    width: 20px;
+    height: 20px;
   }
 }
 
-@media only screen and (min-width: 768px) and (max-width: 1439px) {
+@media only screen and (min-width: 768px) {
+  .drawer {
+    width: min(60vw, 420px);
+    padding: max(24px, env(safe-area-inset-top)) 22px
+      max(32px, env(safe-area-inset-bottom));
+  }
+
   .closeButton {
     width: 32px;
     height: 32px;
@@ -319,15 +391,9 @@
   }
 }
 
-@media only screen and (max-width: 767px) {
-  .closeButton {
-    width: 24px;
-    height: 24px;
-    border-radius: 8px;
-  }
-
-  .closeButton :global(svg) {
-    width: 24px;
-    height: 24px;
+@media only screen and (min-width: 1440px) {
+  .overlay,
+  .drawer {
+    display: none;
   }
 }

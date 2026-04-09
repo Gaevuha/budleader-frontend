@@ -33,6 +33,7 @@ interface MobileMenuProps {
 
 const primaryLinks: MobileMenuLink[] = [
   { href: "/catalog", label: "Каталог" },
+  { href: "/about", label: "Про нас" },
   { href: "/services", label: "Послуги" },
   { href: "/help", label: "Допомога" },
   { href: "/news", label: "Новини" },
@@ -137,6 +138,7 @@ export function MobileMenu({
           <motion.button
             type="button"
             className={styles.overlay}
+            data-theme={theme}
             aria-label="Закрити меню"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
@@ -149,6 +151,7 @@ export function MobileMenu({
             id="mobile-menu"
             ref={drawerRef}
             className={styles.drawer}
+            data-theme={theme}
             role="dialog"
             aria-modal="true"
             aria-label="Мобільне меню"
