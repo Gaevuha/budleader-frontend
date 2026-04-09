@@ -29,6 +29,7 @@ import type {
 
 // CSR client for Client Components and TanStack Query hooks.
 export const apiClient: AxiosInstance = api;
+const USERS_PROXY_BASE = "/api/proxy/api/users";
 
 const AUTH_RATE_LIMIT_BACKOFF_MS = 15_000;
 const REVIEW_RATE_LIMIT_BACKOFF_MS = 15_000;
@@ -857,7 +858,7 @@ export async function registerCSR(
 }
 
 export async function logoutCSR(): Promise<void> {
-  await apiFetch<null>("/api/auth/logout", {
+  await apiFetch<null>(`${AUTH_PROXY_BASE}/logout`, {
     method: "POST",
     body: {},
   });
@@ -866,7 +867,7 @@ export async function logoutCSR(): Promise<void> {
 }
 
 export async function logoutAllCSR(): Promise<void> {
-  await apiFetch<null>("/api/auth/logout-all", {
+  await apiFetch<null>(`${AUTH_PROXY_BASE}/logout-all`, {
     method: "POST",
     body: {},
   });
@@ -888,7 +889,7 @@ export async function getCurrentUserCSR(): Promise<User | null> {
   if (!currentUserRequest) {
     currentUserRequest = apiFetch<{
       user: (User & { _id?: string; name?: string }) | null;
-    }>("/api/auth/me", {
+    }>(`${AUTH_PROXY_BASE}/me`, {
       retryOn401: false,
     })
       .then((response) => {
@@ -1016,12 +1017,11 @@ export async function getCartCSR(): Promise<CartData> {
   }
 
   if (!cartRequest) {
-    cartRequest = apiClient
-      .get<ApiResponse<CartData> | CartData>("/api/users/cart", {
-        params: { _ts: Date.now() },
-      })
-      .then((response) => {
-        const normalized = normalizeCartPayload(response.data);
+    cartRequest = apiFetch<ApiResponse<CartData> | CartData>(
+      `${USERS_PROXY_BASE}/cart?_ts=${Date.now()}`
+    )
+      .then((payload) => {
+        const normalized = normalizeCartPayload(payload);
         cartSnapshot = {
           value: normalized,
           expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
@@ -1039,12 +1039,15 @@ export async function getCartCSR(): Promise<CartData> {
 export async function addToCartCSR(
   payload: AddToCartPayload
 ): Promise<CartData> {
-  const response = await apiClient.post<ApiResponse<CartData> | CartData>(
-    "/api/users/cart",
-    payload
+  const data = await apiFetch<ApiResponse<CartData> | CartData>(
+    `${USERS_PROXY_BASE}/cart`,
+    {
+      method: "POST",
+      body: payload,
+    }
   );
 
-  const normalized = normalizeCartPayload(response.data);
+  const normalized = normalizeCartPayload(data);
   cartSnapshot = {
     value: normalized,
     expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
@@ -1053,11 +1056,14 @@ export async function addToCartCSR(
 }
 
 export async function removeFromCartCSR(productId: string): Promise<CartData> {
-  const response = await apiClient.delete<ApiResponse<CartData> | CartData>(
-    `/api/users/cart/${productId}`
+  const data = await apiFetch<ApiResponse<CartData> | CartData>(
+    `${USERS_PROXY_BASE}/cart/${productId}`,
+    {
+      method: "DELETE",
+    }
   );
 
-  const normalized = normalizeCartPayload(response.data);
+  const normalized = normalizeCartPayload(data);
   cartSnapshot = {
     value: normalized,
     expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
@@ -1066,11 +1072,14 @@ export async function removeFromCartCSR(productId: string): Promise<CartData> {
 }
 
 export async function clearCartCSR(): Promise<CartData> {
-  const response = await apiClient.delete<ApiResponse<CartData> | CartData>(
-    "/api/users/cart"
+  const data = await apiFetch<ApiResponse<CartData> | CartData>(
+    `${USERS_PROXY_BASE}/cart`,
+    {
+      method: "DELETE",
+    }
   );
 
-  const normalized = normalizeCartPayload(response.data);
+  const normalized = normalizeCartPayload(data);
   cartSnapshot = {
     value: normalized,
     expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
@@ -1084,12 +1093,11 @@ export async function getWishlistCSR(): Promise<WishlistResult> {
   }
 
   if (!wishlistRequest) {
-    wishlistRequest = apiClient
-      .get("/api/users/wishlist", {
-        params: { _ts: Date.now() },
-      })
-      .then((response) => {
-        const normalized = normalizeWishlistPayload(response.data);
+    wishlistRequest = apiFetch<unknown>(
+      `${USERS_PROXY_BASE}/wishlist?_ts=${Date.now()}`
+    )
+      .then((payload) => {
+        const normalized = normalizeWishlistPayload(payload);
         wishlistSnapshot = {
           value: normalized,
           expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
@@ -1116,42 +1124,16 @@ interface WishlistRequestOptions {
 
 export async function addToWishlistCSR(
   productId: string,
-  options: WishlistRequestOptions = {}
+  _options: WishlistRequestOptions = {}
 ): Promise<WishlistResult> {
-  let response;
-
-  try {
-    response = await apiClient.request({
-      method: "post",
-      url: `/api/users/wishlist/${productId}`,
-      suppressDebugErrorLog: options.suppressDebugErrorLog,
-    });
-  } catch (error) {
-    const status =
-      typeof error === "object" &&
-      error &&
-      "response" in error &&
-      typeof (error as { response?: { status?: number } }).response?.status ===
-        "number"
-        ? (error as { response?: { status?: number } }).response?.status
-        : undefined;
-
-    if (status === 429 && process.env.NODE_ENV !== "production") {
-      console.warn("[addToWishlistCSR] rate limited", {
-        productId,
-        status,
-        suppressDebugErrorLog: options.suppressDebugErrorLog,
-        response:
-          typeof error === "object" && error && "response" in error
-            ? (error as { response?: unknown }).response
-            : undefined,
-      });
+  const data = await apiFetch<unknown>(
+    `${USERS_PROXY_BASE}/wishlist/${productId}`,
+    {
+      method: "POST",
     }
+  );
 
-    throw error;
-  }
-
-  const normalized = normalizeWishlistPayload(response.data);
+  const normalized = normalizeWishlistPayload(data);
   wishlistSnapshot = {
     value: normalized,
     expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
@@ -1162,9 +1144,14 @@ export async function addToWishlistCSR(
 export async function removeFromWishlistCSR(
   productId: string
 ): Promise<WishlistResult> {
-  const response = await apiClient.delete(`/api/users/wishlist/${productId}`);
+  const data = await apiFetch<unknown>(
+    `${USERS_PROXY_BASE}/wishlist/${productId}`,
+    {
+      method: "DELETE",
+    }
+  );
 
-  const normalized = normalizeWishlistPayload(response.data);
+  const normalized = normalizeWishlistPayload(data);
   wishlistSnapshot = {
     value: normalized,
     expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
