@@ -13,6 +13,7 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
+import { Funnel } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ReactPaginate from "react-paginate";
@@ -153,6 +154,7 @@ export function CatalogClient({
   const persistedViewMode =
     currentUser?.catalogViewMode ?? guestViewMode ?? DEFAULT_CATALOG_VIEW_MODE;
   const viewMode = pendingViewMode ?? persistedViewMode;
+  const effectiveViewMode: CatalogViewMode = isDesktop ? viewMode : "grid";
 
   useEffect(() => {
     const prevUrlSearch = prevUrlSearchRef.current;
@@ -935,17 +937,15 @@ export function CatalogClient({
                       aria-expanded={isFiltersOpen}
                       aria-controls="catalog-filters"
                     >
+                      <Funnel size={16} aria-hidden="true" />
                       Фільтр
                     </button>
-                    <span className={styles.mobileResultsCount}>
-                      {effectivePagination?.total ?? displayedProducts.length}{" "}
-                      товарів
-                    </span>
                   </div>
                 ) : null}
 
                 <CatalogToolbar
-                  viewMode={viewMode}
+                  showViewToggle={isDesktop}
+                  viewMode={effectiveViewMode}
                   onViewModeChange={handleViewModeChange}
                   sortOrder={sortOrder}
                   onSortOrderChange={setSortOrder}
@@ -967,7 +967,7 @@ export function CatalogClient({
                   <>
                     <ProductList
                       products={displayedProducts}
-                      viewMode={viewMode}
+                      viewMode={effectiveViewMode}
                       onResetFilters={() => clearFilters({ clearSearch: true })}
                     />
 

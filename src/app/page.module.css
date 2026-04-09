@@ -71,7 +71,7 @@
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
-  background-color: #f5f7fc;
+  background-color: color-mix(in srgb, var(--surface) 84%, #f5f7fc 16%);
   border-top-left-radius: var(--radius);
   border-top-right-radius: var(--radius);
   font-weight: 700;
@@ -79,6 +79,10 @@
   text-transform: uppercase;
   font-size: 15px;
   letter-spacing: 0.5px;
+}
+
+:global(html[data-theme="dark"]) .catalogHeader {
+  background-color: color-mix(in srgb, var(--surface-soft) 88%, #0f172a 12%);
 }
 
 .catalogListWrapper {
@@ -874,9 +878,15 @@
 }
 
 .featureCard {
+  --feature-card-bg: #ffffff;
+  --feature-card-border: var(--border);
+  --feature-card-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
+  --feature-icon-bg: rgba(var(--primary-rgb), 0.1);
+  --feature-title-color: var(--foreground);
+  --feature-desc-color: var(--muted-foreground);
   height: 100%;
-  background: white;
-  border: 1px solid var(--border);
+  background: var(--feature-card-bg);
+  border: 1px solid var(--feature-card-border);
   padding: 18px;
   border-radius: 22px;
   display: flex;
@@ -885,15 +895,24 @@
   transition: transform 0.3s, box-shadow 0.3s;
 }
 
+:global(html[data-theme="dark"]) .featureCard {
+  --feature-card-bg: rgba(19, 33, 51, 0.92);
+  --feature-card-border: rgba(62, 140, 116, 0.18);
+  --feature-card-shadow: 0 12px 24px rgba(2, 6, 23, 0.24);
+  --feature-icon-bg: rgba(var(--primary-rgb), 0.18);
+  --feature-title-color: #f8fafc;
+  --feature-desc-color: #cbd5e1;
+}
+
 .featureCard:hover {
   transform: translateY(-3px);
-  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.05);
-  border-color: rgba(31, 166, 74, 0.3);
+  box-shadow: var(--feature-card-shadow);
+  border-color: rgba(var(--primary-rgb), 0.3);
 }
 
 .featureIcon {
   color: var(--primary);
-  background: rgba(31, 166, 74, 0.1);
+  background: var(--feature-icon-bg);
   width: 52px;
   height: 52px;
   border-radius: 16px;
@@ -911,11 +930,11 @@
   font-size: 15px;
   font-weight: 700;
   margin: 0 0 4px 0;
-  color: var(--foreground);
+  color: var(--feature-title-color);
 }
 
 .featureDesc {
-  color: #666;
+  color: var(--feature-desc-color);
   font-size: 13px;
   margin: 0;
   line-height: 1.5;

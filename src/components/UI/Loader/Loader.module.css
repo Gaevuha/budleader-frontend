@@ -8,12 +8,12 @@
   height: 16px; /**50*/
   margin: 0 auto;
   background-repeat: no-repeat;
-  background-image: linear-gradient(#1fa64a 50px, transparent 0),
-    linear-gradient(#1fa64a 50px, transparent 0),
-    linear-gradient(#1fa64a 50px, transparent 0),
-    linear-gradient(#1fa64a 50px, transparent 0),
-    linear-gradient(#1fa64a 50px, transparent 0),
-    linear-gradient(#1fa64a 50px, transparent 0);
+  background-image: linear-gradient(var(--primary) 50px, transparent 0),
+    linear-gradient(var(--primary) 50px, transparent 0),
+    linear-gradient(var(--primary) 50px, transparent 0),
+    linear-gradient(var(--primary) 50px, transparent 0),
+    linear-gradient(var(--primary) 50px, transparent 0),
+    linear-gradient(var(--primary) 50px, transparent 0);
   background-position: 0px center, 15px center, 30px center, 45px center,
     60px center, 75px center;
   animation: rikSpikeRoll 0.65s linear infinite alternate;
