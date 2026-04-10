@@ -3,7 +3,7 @@ import type { AxiosInstance } from "axios";
 import {
   api,
   apiFetch,
-  AUTH_PROXY_BASE,
+  AUTH_API_URL,
   mapApiPayloadToAppProducts,
   mapApiProductToAppProduct,
 } from "@/services/api";
@@ -810,7 +810,7 @@ export async function loginCSR(payload: LoginPayload): Promise<LoginData> {
   }
 
   try {
-    const data = await apiFetch<LoginData>(`${AUTH_PROXY_BASE}/login`, {
+    const data = await apiFetch<LoginData>(`${AUTH_API_URL}/login`, {
       method: "POST",
       body: payload,
     });
@@ -840,7 +840,7 @@ export async function registerCSR(
     .join(" ")
     .trim();
 
-  const data = await apiFetch<RegisterData>(`${AUTH_PROXY_BASE}/register`, {
+  const data = await apiFetch<RegisterData>(`${AUTH_API_URL}/register`, {
     method: "POST",
     body: {
       name: normalizedName || payload.firstName,
@@ -858,7 +858,7 @@ export async function registerCSR(
 }
 
 export async function logoutCSR(): Promise<void> {
-  await apiFetch<null>(`${AUTH_PROXY_BASE}/logout`, {
+  await apiFetch<null>(`${AUTH_API_URL}/logout`, {
     method: "POST",
     body: {},
   });
@@ -867,7 +867,7 @@ export async function logoutCSR(): Promise<void> {
 }
 
 export async function logoutAllCSR(): Promise<void> {
-  await apiFetch<null>(`${AUTH_PROXY_BASE}/logout-all`, {
+  await apiFetch<null>(`${AUTH_API_URL}/logout-all`, {
     method: "POST",
     body: {},
   });
@@ -889,7 +889,7 @@ export async function getCurrentUserCSR(): Promise<User | null> {
   if (!currentUserRequest) {
     currentUserRequest = apiFetch<{
       user: (User & { _id?: string; name?: string }) | null;
-    }>(`${AUTH_PROXY_BASE}/me`, {
+    }>(`${AUTH_API_URL}/me`, {
       retryOn401: false,
     })
       .then((response) => {
@@ -930,7 +930,7 @@ export async function getCurrentUserCSR(): Promise<User | null> {
 }
 
 export async function validateSessionCSR(): Promise<ValidateSessionData> {
-  return apiFetch<ValidateSessionData>(`${AUTH_PROXY_BASE}/validate`);
+  return apiFetch<ValidateSessionData>(`${AUTH_API_URL}/validate`);
 }
 
 export async function updateProfileCSR(
@@ -955,7 +955,7 @@ export async function updateProfileCSR(
   }
 
   const data = await apiFetch<User & { _id?: string; name?: string }>(
-    `${AUTH_PROXY_BASE}/update-profile`,
+    `${AUTH_API_URL}/update-profile`,
     {
       method: "PUT",
       body: formData,
@@ -973,7 +973,7 @@ export async function updateProfileCSR(
 export async function changePasswordCSR(
   payload: ChangePasswordPayload
 ): Promise<void> {
-  await apiFetch<null>(`${AUTH_PROXY_BASE}/change-password`, {
+  await apiFetch<null>(`${AUTH_API_URL}/change-password`, {
     method: "PUT",
     body: payload,
   });
@@ -982,7 +982,7 @@ export async function changePasswordCSR(
 export async function forgotPasswordCSR(
   payload: ForgotPasswordPayload
 ): Promise<void> {
-  await apiFetch<null>(`${AUTH_PROXY_BASE}/forgot-password`, {
+  await apiFetch<null>(`${AUTH_API_URL}/forgot-password`, {
     method: "POST",
     body: payload,
   });
@@ -992,7 +992,7 @@ export async function resetPasswordCSR(
   token: string,
   payload: ResetPasswordPayload
 ): Promise<void> {
-  await apiFetch<null>(`${AUTH_PROXY_BASE}/reset-password/${token}`, {
+  await apiFetch<null>(`${AUTH_API_URL}/reset-password/${token}`, {
     method: "PUT",
     body: payload,
   });
@@ -1002,7 +1002,7 @@ export function getOAuthRedirectUrl(
   provider: "google" | "facebook",
   returnTo?: string
 ): string {
-  const url = new URL(`${AUTH_PROXY_BASE}/${provider}`, window.location.origin);
+  const url = new URL(`${AUTH_API_URL}/${provider}`);
 
   if (returnTo?.trim()) {
     url.searchParams.set("returnTo", returnTo);
@@ -1118,13 +1118,8 @@ export async function getOrdersCSR(): Promise<OrdersResult> {
   return normalizeOrdersPayload(response.data);
 }
 
-interface WishlistRequestOptions {
-  suppressDebugErrorLog?: boolean;
-}
-
 export async function addToWishlistCSR(
-  productId: string,
-  _options: WishlistRequestOptions = {}
+  productId: string
 ): Promise<WishlistResult> {
   const data = await apiFetch<unknown>(
     `${USERS_PROXY_BASE}/wishlist/${productId}`,

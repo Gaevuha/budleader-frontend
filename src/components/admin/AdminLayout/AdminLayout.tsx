@@ -1,9 +1,8 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { useState } from "react";
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   LayoutDashboard,
   ShoppingBag,
@@ -15,29 +14,11 @@ import {
   MessageSquare,
   BarChart2,
 } from "lucide-react";
-import { useLogout } from "@/queries/authQueries";
+import { LogoutButton } from "@/components/LogoutButton";
 import styles from "./AdminLayout.module.css";
 
 export const AdminLayout = ({ children }: { children: ReactNode }) => {
   const location = usePathname();
-  const router = useRouter();
-  const logoutMutation = useLogout();
-  const [isLoggingOut, setIsLoggingOut] = useState(false);
-
-  const handleLogout = async () => {
-    if (isLoggingOut) {
-      return;
-    }
-
-    setIsLoggingOut(true);
-
-    try {
-      await logoutMutation.mutateAsync();
-      router.push("/");
-    } finally {
-      setIsLoggingOut(false);
-    }
-  };
 
   return (
     <div className={styles.layout}>
@@ -116,14 +97,9 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
           </Link>
         </nav>
         <div className={styles.logout}>
-          <button
-            type="button"
-            className={styles.navItem}
-            onClick={() => void handleLogout()}
-            disabled={isLoggingOut}
-          >
+          <LogoutButton className={styles.navItem}>
             <LogOut size={20} /> Вийти
-          </button>
+          </LogoutButton>
         </div>
       </aside>
       <main className={styles.main}>

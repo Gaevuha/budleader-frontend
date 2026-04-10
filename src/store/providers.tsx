@@ -170,7 +170,7 @@ function AppBootstrap({
 
       for (const productId of wishlistIdsToSync) {
         try {
-          await addToWishlistCSR(productId, { suppressDebugErrorLog: true });
+          await addToWishlistCSR(productId);
         } catch {
           // Skip invalid or already-synced wishlist items and continue.
         }
