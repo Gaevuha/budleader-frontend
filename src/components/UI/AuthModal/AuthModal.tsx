@@ -4,8 +4,9 @@ import { useEffect, useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "@/components/UI/notifications/toast";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import styles from "./AuthModal.module.css";
+import { GoogleLoginButton } from "@/components/GoogleLoginButton";
 
 import {
   useForgotPassword,
@@ -13,7 +14,6 @@ import {
   useRegister,
 } from "@/queries/authQueries";
 import { getApiErrorMessage } from "@/services/api";
-import { getOAuthRedirectUrl } from "@/services/apiClient";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
 import type { AuthModalMode } from "@/types/auth";
 
@@ -27,7 +27,6 @@ export const AuthModal = () => {
   const { isOpen, mode, open, close } = useAuthModalStore();
   const router = useRouter();
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const loginMutation = useLogin();
   const registerMutation = useRegister();
   const forgotPasswordMutation = useForgotPassword();
@@ -179,16 +178,6 @@ export const AuthModal = () => {
     }
   };
 
-  const handleOAuthRedirect = (provider: "google" | "facebook") => {
-    const currentPath = pathname || "/";
-    const currentSearch = searchParams?.toString();
-    const returnTo = currentSearch
-      ? `${currentPath}?${currentSearch}`
-      : currentPath;
-
-    window.location.assign(getOAuthRedirectUrl(provider, returnTo));
-  };
-
   return (
     <AnimatePresence>
       <motion.div
@@ -327,20 +316,9 @@ export const AuthModal = () => {
             <div className={styles.oauthSection}>
               <p className={styles.helperText}>Або продовжити через</p>
               <div className={styles.oauthButtons}>
-                <button
-                  type="button"
-                  className={styles.oauthButton}
-                  onClick={() => handleOAuthRedirect("google")}
-                >
+                <GoogleLoginButton className={styles.oauthButton}>
                   Google
-                </button>
-                <button
-                  type="button"
-                  className={styles.oauthButton}
-                  onClick={() => handleOAuthRedirect("facebook")}
-                >
-                  Facebook
-                </button>
+                </GoogleLoginButton>
               </div>
             </div>
           ) : null}

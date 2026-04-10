@@ -4,6 +4,7 @@ import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
 import { Providers } from "@/store/providers";
+import { AuthProvider } from "@/providers/AuthProvider";
 import { AppChrome } from "@/components/layout/AppChrome/AppChrome";
 import { getCategories, getUser } from "@/services/apiServer";
 import {
@@ -62,12 +63,14 @@ export default async function RootLayout({
           </Script>
         ) : null}
         <Providers initialTheme={initialTheme} initialUser={currentUser}>
-          <AppChrome
-            categories={resolvedCategories}
-            initialTheme={initialTheme}
-          >
-            {children}
-          </AppChrome>
+          <AuthProvider initialUser={currentUser}>
+            <AppChrome
+              categories={resolvedCategories}
+              initialTheme={initialTheme}
+            >
+              {children}
+            </AppChrome>
+          </AuthProvider>
         </Providers>
       </body>
     </html>

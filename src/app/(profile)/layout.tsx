@@ -11,7 +11,7 @@ export default async function ProfileLayout({ children }: ProfileLayoutProps) {
   const user = await getUser();
 
   if (!user) {
-    redirect("/login");
+    redirect("/");
   }
 
   if (user.role === "admin") {

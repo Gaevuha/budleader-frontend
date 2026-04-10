@@ -20,8 +20,8 @@ export const API_BASE_URL = normalizeApiBaseUrl(
 );
 export const API_TIMEOUT_MS = 15_000;
 export const API_PROXY_PREFIX = "/api/proxy";
-export const AUTH_PROXY_BASE = `${API_PROXY_PREFIX}/api/auth`;
-const REFRESH_ENDPOINT = "/api/auth/refresh";
+export const AUTH_API_URL = `${API_BASE_URL}/api/auth`;
+const REFRESH_ENDPOINT_PATH = "/api/auth/refresh";
 const AUTH_ENDPOINT_PREFIX = "/api/auth";
 const CATALOG_BACKOFF_MS = 15_000;
 const CATEGORIES_CACHE_TTL_MS = 5 * 60_000;
@@ -300,7 +300,7 @@ const logApiFetchDebug = (
 const refreshAuthSession = async (): Promise<void> => {
   if (!refreshPromise) {
     refreshPromise = (async () => {
-      const response = await fetch(`${AUTH_PROXY_BASE}/refresh`, {
+      const response = await fetch(`${AUTH_API_URL}/refresh`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -331,7 +331,7 @@ const refreshAuthSession = async (): Promise<void> => {
 const refreshAxiosSession = async (): Promise<void> => {
   if (!axiosRefreshPromise) {
     axiosRefreshPromise = (async () => {
-      const response = await fetch(REFRESH_ENDPOINT, {
+      const response = await fetch(`${AUTH_API_URL}/refresh`, {
         method: "POST",
         credentials: "include",
         headers: {
@@ -857,7 +857,7 @@ api.interceptors.response.use(
       error.response?.status !== 401 ||
       !originalRequest ||
       originalRequest._retry ||
-      originalRequest.url?.includes(REFRESH_ENDPOINT) ||
+      originalRequest.url?.includes(REFRESH_ENDPOINT_PATH) ||
       isPublicEndpointPath(requestPath) ||
       isAuthEndpointPath(requestPath)
     ) {

@@ -1,16 +1,15 @@
 "use client";
 
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
-import { ApiFetchError } from "@/services/api";
+import { AUTH_QUERY_KEY, useAuth } from "@/hooks/useAuth";
+import { logout } from "@/services/authService";
 import { publishAuthEvent } from "@/services/authBroadcast";
 import {
   changePasswordCSR,
   forgotPasswordCSR,
-  getCurrentUserCSR,
   loginCSR,
   logoutAllCSR,
-  logoutCSR,
   resetCommerceRequestCache,
   resetCurrentUserRequestCache,
   registerCSR,
@@ -27,34 +26,14 @@ import type {
   User,
 } from "@/types/auth";
 
-export const USER_QUERY_KEY = ["me"] as const;
+export const USER_QUERY_KEY = AUTH_QUERY_KEY;
 
 interface UseUserOptions {
   initialData?: User | null;
 }
 
 export function useUser(options: UseUserOptions = {}) {
-  return useQuery({
-    queryKey: USER_QUERY_KEY,
-    queryFn: () => getCurrentUserCSR(),
-    staleTime: 60_000,
-    gcTime: 5 * 60_000,
-    refetchOnWindowFocus: false,
-    refetchOnReconnect: false,
-    initialData: options.initialData,
-    placeholderData: options.initialData,
-    retry: (failureCount, error) => {
-      if (error instanceof ApiFetchError && error.status === 401) {
-        return false;
-      }
-
-      if (error instanceof ApiFetchError && error.status === 429) {
-        return false;
-      }
-
-      return failureCount < 1;
-    },
-  });
+  return useAuth(options);
 }
 
 export function useLogin() {
@@ -89,13 +68,13 @@ export function useLogout() {
   const queryClient = useQueryClient();
 
   return useMutation({
-    mutationFn: logoutCSR,
+    mutationFn: logout,
     onSuccess: async () => {
       resetCurrentUserRequestCache();
       resetCommerceRequestCache();
       publishAuthEvent("logout");
-      queryClient.setQueryData(USER_QUERY_KEY, null);
-      await queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
+      await queryClient.cancelQueries();
+      queryClient.clear();
     },
   });
 }
@@ -109,8 +88,8 @@ export function useLogoutAll() {
       resetCurrentUserRequestCache();
       resetCommerceRequestCache();
       publishAuthEvent("logout-all");
-      queryClient.setQueryData(USER_QUERY_KEY, null);
-      await queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
+      await queryClient.cancelQueries();
+      queryClient.clear();
     },
   });
 }
