@@ -14,40 +14,14 @@ import {
   resetCommerceRequestCache,
   resetCurrentUserRequestCache,
 } from "@/services/apiClient";
+import { resolvePostAuthRedirectPath } from "@/services/authRedirect";
 import { getCurrentUser } from "@/services/authService";
 
-const DEFAULT_RETURN_PATH = "/profile";
 const OAUTH_ERROR_REDIRECT = "/login?oauth=error";
 const SUCCESS_REDIRECT_DELAY_MS = 2800;
 const SUCCESS_TOAST_DURATION_MS = 4600;
 const ERROR_REDIRECT_DELAY_MS = 1800;
 const CALLBACK_TOAST_ID = "google-auth-callback";
-const DISALLOWED_RETURN_PATHS = new Set([
-  "/login",
-  "/register",
-  "/forgot-password",
-  "/auth/callback",
-]);
-
-const sanitizeReturnPath = (value: string | null): string => {
-  if (!value) {
-    return DEFAULT_RETURN_PATH;
-  }
-
-  const trimmed = value.trim();
-
-  if (!trimmed.startsWith("/") || trimmed.startsWith("//")) {
-    return DEFAULT_RETURN_PATH;
-  }
-
-  const [pathname] = trimmed.split("?", 1);
-
-  if (DISALLOWED_RETURN_PATHS.has(pathname)) {
-    return DEFAULT_RETURN_PATH;
-  }
-
-  return trimmed;
-};
 
 type CallbackStatusVariant = "loading" | "success" | "error";
 
@@ -81,7 +55,7 @@ export default function AuthCallbackPage() {
     });
 
     const finalizeOAuthLogin = async () => {
-      const nextPath = sanitizeReturnPath(searchParams.get("next"));
+      const requestedPath = searchParams.get("next");
 
       try {
         resetCurrentUserRequestCache();
@@ -99,13 +73,18 @@ export default function AuthCallbackPage() {
           return;
         }
 
+        const nextPath = resolvePostAuthRedirectPath(user.role, requestedPath);
+
         const resolvedName =
           user.firstName?.trim() || user.name?.trim() || user.email.trim();
 
         hasSettledToastRef.current = true;
         setStatus({
           variant: "success",
-          message: "Перенаправляємо до вашого профілю...",
+          message:
+            user.role === "admin"
+              ? "Перенаправляємо до адмін-панелі..."
+              : "Перенаправляємо до вашого профілю...",
         });
         toast.success(`Ви зайшли як ${resolvedName}`, {
           id: CALLBACK_TOAST_ID,

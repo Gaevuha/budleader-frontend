@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { Container } from "@/components/layout/Container/Container";
 import Loader from "@/components/UI/Loader/Loader";
 import { useUser } from "@/queries/authQueries";
+import { resolvePostAuthRedirectPath } from "@/services/authRedirect";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
 import type { AuthModalMode } from "@/types/auth";
 
@@ -69,22 +70,22 @@ export function AuthRoutePage({ mode }: AuthRoutePageProps) {
       return;
     }
 
-    if (userQuery.data.role === "admin") {
-      router.replace("/admin/dashboard");
-      return;
-    }
-
     const storedReturnTo =
       typeof window !== "undefined"
         ? window.sessionStorage.getItem("budleader-auth-return-to")
         : null;
 
-    if (storedReturnTo && storedReturnTo.startsWith("/")) {
-      router.replace(storedReturnTo);
-      return;
+    const nextPath = resolvePostAuthRedirectPath(
+      userQuery.data.role,
+      storedReturnTo,
+      "/"
+    );
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("budleader-auth-return-to");
     }
 
-    router.replace("/");
+    router.replace(nextPath);
   }, [router, userQuery.data]);
 
   return (

@@ -106,21 +106,7 @@ export const AdminLayout = ({ children }: { children: ReactNode }) => {
         <header className={styles.header}>
           <h2>Панель керування</h2>
           <div className={styles.userProfile}>
-            <div
-              style={{
-                width: 32,
-                height: 32,
-                borderRadius: "50%",
-                backgroundColor: "var(--primary)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "white",
-                fontWeight: "bold",
-              }}
-            >
-              А
-            </div>
+            <div className={styles.avatar}>А</div>
             <span>Адміністратор</span>
           </div>
         </header>

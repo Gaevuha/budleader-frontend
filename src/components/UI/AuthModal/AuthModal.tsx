@@ -14,6 +14,7 @@ import {
   useRegister,
 } from "@/queries/authQueries";
 import { getApiErrorMessage } from "@/services/api";
+import { resolvePostAuthRedirectPath } from "@/services/authRedirect";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
 import type { AuthModalMode } from "@/types/auth";
 
@@ -101,18 +102,24 @@ export const AuthModal = () => {
   const redirectAfterAuth = (role?: string) => {
     close();
 
-    if (role === "admin") {
-      router.push("/admin/dashboard");
-      return;
-    }
-
     const storedReturnTo =
       typeof window !== "undefined"
         ? window.sessionStorage.getItem("budleader-auth-return-to")
         : null;
 
-    if (storedReturnTo && storedReturnTo.startsWith("/")) {
-      router.replace(storedReturnTo);
+    const nextPath = resolvePostAuthRedirectPath(role, storedReturnTo, "/");
+
+    if (typeof window !== "undefined") {
+      window.sessionStorage.removeItem("budleader-auth-return-to");
+    }
+
+    if (nextPath === "/admin/dashboard") {
+      router.replace(nextPath);
+      return;
+    }
+
+    if (storedReturnTo && nextPath === storedReturnTo) {
+      router.replace(nextPath);
       return;
     }
 
@@ -122,7 +129,7 @@ export const AuthModal = () => {
       pathname === "/forgot-password";
 
     if (isAuthRoute) {
-      router.replace("/");
+      router.replace(nextPath);
       return;
     }
 
