@@ -8,18 +8,15 @@ import type { ApiResponse, Pagination } from "@/types/api";
 import type { User } from "@/types/auth";
 import type { Category, CategoriesData } from "@/types/category";
 import type { Product } from "@/types/product";
-import { normalizeProductCore } from "@/services/api";
-
-const normalizeApiBaseUrl = (rawUrl: string): string => {
-  const trimmed = rawUrl.replace(/\/+$/, "");
-  return trimmed.replace(/\/api$/i, "");
-};
+import {
+  extractApiPagination,
+  mapApiPayloadToProducts,
+  normalizeProductCore,
+} from "@/services/api";
 
 const DEFAULT_APP_URL =
   process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
-const BACKEND_BASE_URL = normalizeApiBaseUrl(
-  process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:4000"
-);
+const AUTH_PROXY_PREFIX = "/api/auth";
 const PROXY_PREFIX = "/api/proxy";
 const SERVER_TIMEOUT_MS = 15_000;
 const CATEGORIES_CACHE_TTL_MS = 5 * 60_000;
@@ -90,32 +87,6 @@ const findNestedArrayByKeys = (
   return null;
 };
 
-const findNestedObjectByKey = (
-  input: unknown,
-  key: string,
-  depth = 0
-): Record<string, unknown> | null => {
-  if (!isRecord(input) || depth > 5) {
-    return null;
-  }
-
-  const candidate = input[key];
-  if (isRecord(candidate)) {
-    return candidate;
-  }
-
-  for (const wrapperKey of ["data", "result", "payload"]) {
-    if (wrapperKey in input) {
-      const nested = findNestedObjectByKey(input[wrapperKey], key, depth + 1);
-      if (nested) {
-        return nested;
-      }
-    }
-  }
-
-  return null;
-};
-
 let categoriesCache: CacheEntry<Category[]> | null = null;
 let categoriesInFlight: Promise<Category[]> | null = null;
 let categoriesBackoffUntil = 0;
@@ -123,29 +94,6 @@ let categoriesBackoffUntil = 0;
 const productsCache = new Map<string, CacheEntry<ProductsSSRResult>>();
 const productsInFlight = new Map<string, Promise<ProductsSSRResult>>();
 const productsBackoffUntil = new Map<string, number>();
-
-const normalizePagination = (value: unknown): Pagination | null => {
-  if (!value || typeof value !== "object") {
-    return null;
-  }
-
-  const raw = value as Record<string, unknown>;
-  const page = Number(raw.page ?? raw.currentPage);
-  const limit = Number(raw.limit ?? raw.itemsPerPage);
-  const total = Number(raw.total ?? raw.totalItems);
-  const totalPages = Number(raw.totalPages);
-
-  if (
-    !Number.isFinite(page) ||
-    !Number.isFinite(limit) ||
-    !Number.isFinite(total) ||
-    !Number.isFinite(totalPages)
-  ) {
-    return null;
-  }
-
-  return { page, limit, total, totalPages };
-};
 
 const extractStatusCode = (error: unknown): number | undefined => {
   if (!error || typeof error !== "object") {
@@ -228,25 +176,6 @@ export const createApiServer = async (options?: {
   return instance;
 };
 
-const normalizeProductsPayload = (
-  payload: unknown
-): { products: Product[]; pagination: Pagination | null } => {
-  const productsArray = findNestedArrayByKeys(payload, ["products", "items"]);
-  const paginationPayload = findNestedObjectByKey(payload, "pagination");
-
-  if (productsArray) {
-    return {
-      products: productsArray as Product[],
-      pagination: normalizePagination(paginationPayload),
-    };
-  }
-
-  return {
-    products: [],
-    pagination: null,
-  };
-};
-
 const normalizeProductRecord = (product: RawProduct): Product => {
   return (
     normalizeProductCore(product) ?? {
@@ -308,9 +237,10 @@ const normalizeProductPayload = (payload: unknown): Product | null => {
   return null;
 };
 
-const normalizeProductsResult = (
-  value: ReturnType<typeof normalizeProductsPayload>
-): ReturnType<typeof normalizeProductsPayload> => {
+const normalizeProductsResult = (value: {
+  products: Product[];
+  pagination: Pagination | null;
+}): { products: Product[]; pagination: Pagination | null } => {
   return {
     ...value,
     products: value.products.map((product) =>
@@ -474,6 +404,7 @@ const mergeCategories = (...groups: Category[][]): Category[] => {
 };
 
 export async function getUser(): Promise<User | null> {
+  const origin = await resolveServerOrigin();
   const cookieStore = await cookies();
   const cookieHeader = cookieStore.toString();
 
@@ -481,7 +412,7 @@ export async function getUser(): Promise<User | null> {
     return null;
   }
 
-  const response = await fetch(`${BACKEND_BASE_URL}/api/auth/me`, {
+  const response = await fetch(`${origin}${AUTH_PROXY_PREFIX}/me`, {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -563,9 +494,10 @@ export async function getProductsSSR(params?: {
         ApiResponse<ProductEnvelope> | ProductEnvelope
       >("api/products", { params: queryParams });
 
-      const normalized = normalizeProductsResult(
-        normalizeProductsPayload(response.data)
-      );
+      const normalized = normalizeProductsResult({
+        products: mapApiPayloadToProducts(response.data),
+        pagination: extractApiPagination(response.data),
+      });
 
       productsCache.set(key, {
         value: normalized,

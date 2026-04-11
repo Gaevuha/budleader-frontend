@@ -16,6 +16,7 @@ import {
   resetPasswordCSR,
   updateProfileCSR,
 } from "@/services/apiClient";
+import { useAuthStore } from "@/store/auth/authStore";
 import type {
   ChangePasswordPayload,
   ForgotPasswordPayload,
@@ -44,6 +45,7 @@ export function useLogin() {
     onSuccess: async (data) => {
       resetCurrentUserRequestCache();
       resetCommerceRequestCache();
+      useAuthStore.getState().login(data.user);
       queryClient.setQueryData(USER_QUERY_KEY, data.user);
       publishAuthEvent("login");
     },
@@ -58,6 +60,7 @@ export function useRegister() {
     onSuccess: async (data) => {
       resetCurrentUserRequestCache();
       resetCommerceRequestCache();
+      useAuthStore.getState().login(data.user);
       queryClient.setQueryData(USER_QUERY_KEY, data.user);
       publishAuthEvent("register");
     },
@@ -72,6 +75,7 @@ export function useLogout() {
     onSuccess: async () => {
       resetCurrentUserRequestCache();
       resetCommerceRequestCache();
+      useAuthStore.getState().clear();
       publishAuthEvent("logout");
       await queryClient.cancelQueries();
       queryClient.clear();
@@ -87,6 +91,7 @@ export function useLogoutAll() {
     onSuccess: async () => {
       resetCurrentUserRequestCache();
       resetCommerceRequestCache();
+      useAuthStore.getState().clear();
       publishAuthEvent("logout-all");
       await queryClient.cancelQueries();
       queryClient.clear();

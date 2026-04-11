@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AlertCircle,
   CheckCircle2,
@@ -17,7 +17,7 @@ import {
 import styles from "./NotificationCenter.module.css";
 
 const MAX_VISIBLE_NOTIFICATIONS = 4;
-const EXIT_ANIMATION_MS = 300;
+const EXIT_ANIMATION_MS = 520;
 
 const ICONS = {
   success: CheckCircle2,
@@ -29,14 +29,17 @@ const ICONS = {
 
 type NotificationCenterProps = {
   variant?: "admin" | "public";
+  placement?: "bottomEnd" | "bottomCenter";
 };
 
 type NotificationViewModel = NotificationRecord & {
   isExiting: boolean;
+  revision: number;
 };
 
 export function NotificationCenter({
   variant = "public",
+  placement = "bottomEnd",
 }: NotificationCenterProps) {
   const [notifications, setNotifications] = useState<NotificationViewModel[]>(
     []
@@ -44,7 +47,7 @@ export function NotificationCenter({
   const timersRef = useRef<Record<string, number>>({});
   const exitTimersRef = useRef<Record<string, number>>({});
 
-  const clearTimers = (id: string) => {
+  const clearTimers = useCallback((id: string) => {
     const timerId = timersRef.current[id];
     const exitTimerId = exitTimersRef.current[id];
 
@@ -57,34 +60,40 @@ export function NotificationCenter({
       window.clearTimeout(exitTimerId);
       delete exitTimersRef.current[id];
     }
-  };
+  }, []);
 
-  const scheduleRemoval = (id: string) => {
-    clearTimers(id);
+  const scheduleRemoval = useCallback(
+    (id: string) => {
+      clearTimers(id);
 
-    setNotifications((current) =>
-      current.map((item) =>
-        item.id === id ? { ...item, isExiting: true } : item
-      )
-    );
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === id ? { ...item, isExiting: true } : item
+        )
+      );
 
-    exitTimersRef.current[id] = window.setTimeout(() => {
-      setNotifications((current) => current.filter((item) => item.id !== id));
-      delete exitTimersRef.current[id];
-    }, EXIT_ANIMATION_MS);
-  };
+      exitTimersRef.current[id] = window.setTimeout(() => {
+        setNotifications((current) => current.filter((item) => item.id !== id));
+        delete exitTimersRef.current[id];
+      }, EXIT_ANIMATION_MS);
+    },
+    [clearTimers]
+  );
 
-  const scheduleAutoDismiss = (notification: NotificationRecord) => {
-    clearTimers(notification.id);
+  const scheduleAutoDismiss = useCallback(
+    (notification: NotificationRecord) => {
+      clearTimers(notification.id);
 
-    if (notification.duration === null) {
-      return;
-    }
+      if (notification.duration === null) {
+        return;
+      }
 
-    timersRef.current[notification.id] = window.setTimeout(() => {
-      scheduleRemoval(notification.id);
-    }, notification.duration);
-  };
+      timersRef.current[notification.id] = window.setTimeout(() => {
+        scheduleRemoval(notification.id);
+      }, notification.duration);
+    },
+    [clearTimers, scheduleRemoval]
+  );
 
   useEffect(() => {
     return subscribeToNotifications((event) => {
@@ -113,11 +122,14 @@ export function NotificationCenter({
 
         if (existingIndex >= 0) {
           const updated = [...current];
-          updated[existingIndex] = nextNotification;
+          updated[existingIndex] = {
+            ...nextNotification,
+            revision: updated[existingIndex].revision + 1,
+          };
           return updated;
         }
 
-        const next = [nextNotification, ...current];
+        const next = [{ ...nextNotification, revision: 0 }, ...current];
         const overflow = next.slice(MAX_VISIBLE_NOTIFICATIONS);
         overflow.forEach((item) => clearTimers(item.id));
         return next.slice(0, MAX_VISIBLE_NOTIFICATIONS);
@@ -125,13 +137,23 @@ export function NotificationCenter({
 
       scheduleAutoDismiss(notification);
     });
-  }, []);
+  }, [scheduleAutoDismiss, scheduleRemoval, clearTimers]);
 
   useEffect(() => {
+    const activeTimers = timersRef.current;
+    const activeExitTimers = exitTimersRef.current;
+
     return () => {
-      Object.keys(timersRef.current).forEach(clearTimers);
+      const ids = new Set([
+        ...Object.keys(activeTimers),
+        ...Object.keys(activeExitTimers),
+      ]);
+
+      ids.forEach((id) => {
+        clearTimers(id);
+      });
     };
-  }, []);
+  }, [clearTimers]);
 
   const dismissNotification = (id: string) => {
     scheduleRemoval(id);
@@ -143,7 +165,7 @@ export function NotificationCenter({
 
   return (
     <div
-      className={`${styles.viewport} ${styles[variant]}`}
+      className={`${styles.viewport} ${styles[variant]} ${styles[placement]}`}
       aria-live="polite"
       aria-atomic="false"
     >
@@ -157,7 +179,7 @@ export function NotificationCenter({
 
         return (
           <div
-            key={notification.id}
+            key={`${notification.id}-${notification.revision}`}
             className={`${styles.card} ${styles[notification.type]} ${
               notification.isExiting ? styles.exiting : ""
             }`}

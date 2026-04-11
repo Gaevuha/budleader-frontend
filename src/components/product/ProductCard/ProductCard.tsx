@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useQueryClient } from "@tanstack/react-query";
 import { ShoppingCart, Heart, Check, Star, Zap } from "lucide-react";
 import type { AppProduct } from "@/types/app";
 import styles from "./ProductCard.module.css";
@@ -11,17 +12,9 @@ import { PRODUCT_PLACEHOLDER_SRC } from "@/utils/media";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { toFiniteNumber } from "@/services/api";
-import { useUser } from "@/queries/authQueries";
-import {
-  useAddToCartMutation,
-  useCartQuery,
-  useRemoveFromCartMutation,
-} from "@/queries/cartQueries";
-import {
-  useAddToWishlistMutation,
-  useRemoveFromWishlistMutation,
-  useWishlistQuery,
-} from "@/queries/wishlistQueries";
+import { useAuthStore } from "@/store/auth/authStore";
+import { CART_QUERY_KEY } from "@/queries/cartQueries";
+import { WISHLIST_QUERY_KEY } from "@/queries/wishlistQueries";
 import { QuickOrderModal } from "@/components/UI/QuickOrderModal/QuickOrderModal";
 
 const RATING_STAR_INDEXES = [0, 1, 2, 3, 4] as const;
@@ -35,25 +28,22 @@ export const ProductCard = ({
   product,
   viewMode = "grid",
 }: ProductCardProps) => {
-  const { data: currentUser } = useUser();
-  const isAuthenticated = Boolean(currentUser);
-  const localCart = useCartStore((state) => state.cart);
-  const addToCartLocal = useCartStore((state) => state.addToCart);
-  const removeFromCartLocal = useCartStore((state) => state.removeFromCart);
-  const wishlistLocal = useWishlistStore((state) => state.wishlist);
-  const toggleWishlistLocal = useWishlistStore((state) => state.toggleWishlist);
-  const addToCartMutation = useAddToCartMutation();
-  const removeFromCartMutation = useRemoveFromCartMutation();
-  const cartQuery = useCartQuery(isAuthenticated);
-  const addToWishlistMutation = useAddToWishlistMutation();
-  const removeFromWishlistMutation = useRemoveFromWishlistMutation();
-  const wishlistQuery = useWishlistQuery(isAuthenticated);
+  const queryClient = useQueryClient();
+  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
+  const cartItems = useCartStore((state) => state.cart);
+  const addCartItem = useCartStore((state) => state.addToCart);
+  const removeCartItem = useCartStore((state) => state.removeFromCart);
+  const isCartProductPending = useCartStore((state) =>
+    state.pendingProductIds.includes(product.id)
+  );
+  const wishlistItems = useWishlistStore((state) => state.wishlist);
+  const toggleWishlistItem = useWishlistStore((state) => state.toggleWishlist);
+  const wishlistIsSyncing = useWishlistStore((state) => state.isSyncing);
+  const [isCartActionPending, setIsCartActionPending] = useState(false);
+  const [isWishlistActionPending, setIsWishlistActionPending] = useState(false);
   const [optimisticInCart, setOptimisticInCart] = useState<boolean | null>(
     null
   );
-  const [optimisticWishlisted, setOptimisticWishlisted] = useState<
-    boolean | null
-  >(null);
   const [isQuickOrderOpen, setIsQuickOrderOpen] = useState(false);
   const [failedImageSrcMap, setFailedImageSrcMap] = useState<
     Record<string, true>
@@ -70,23 +60,14 @@ export const ProductCard = ({
     ? PRODUCT_PLACEHOLDER_SRC
     : resolvedImageSrc;
 
-  const serverWishlist = wishlistQuery.data?.items ?? [];
-  const serverCartItems = cartQuery.data?.items ?? [];
-  const effectiveWishlist = isAuthenticated ? serverWishlist : wishlistLocal;
-  const isWishlisted = effectiveWishlist.some((item) => item.id === product.id);
-  const isInCart = isAuthenticated
-    ? serverCartItems.some(
-        (item) => item.productId === product.id || item.id === product.id
-      )
-    : localCart.some((item) => item.id === product.id);
-  const isWishlistedUi =
-    optimisticWishlisted === null || optimisticWishlisted === isWishlisted
-      ? isWishlisted
-      : optimisticWishlisted;
+  const isWishlistedUi = wishlistItems.some((item) => item.id === product.id);
+  const actualIsInCartUi = cartItems.some(
+    (item) => item.productId === product.id || item.id === product.id
+  );
   const isInCartUi =
-    optimisticInCart === null || optimisticInCart === isInCart
-      ? isInCart
-      : optimisticInCart;
+    optimisticInCart !== null && optimisticInCart !== actualIsInCartUi
+      ? optimisticInCart
+      : actualIsInCartUi;
   const ratingSource = product as AppProduct & {
     averageRating?: unknown;
     avgRating?: unknown;
@@ -112,37 +93,32 @@ export const ProductCard = ({
   const handleAddToCart = async (e: React.MouseEvent<HTMLButtonElement>) => {
     e.preventDefault();
 
+    if (isCartActionPending || isCartProductPending) {
+      return;
+    }
+
     const wasInCart = isInCartUi;
-    const cartEntry = serverCartItems.find(
-      (item) => item.productId === product.id || item.id === product.id
-    );
-    const removeProductId = cartEntry?.productId ?? product.id;
+    setOptimisticInCart(!wasInCart);
+    setIsCartActionPending(true);
 
-    if (isAuthenticated) {
-      setOptimisticInCart(!wasInCart);
-
-      try {
-        if (wasInCart) {
-          await removeFromCartMutation.mutateAsync(removeProductId);
-          removeFromCartLocal(product.id);
-        } else {
-          await addToCartMutation.mutateAsync({
-            productId: product.id,
-            quantity: 1,
-          });
-          addToCartLocal(product as AppProduct);
-        }
-      } catch {
-        setOptimisticInCart(wasInCart);
-        toast.error("Не вдалося оновити кошик");
-        return;
-      }
-    } else {
+    try {
       if (wasInCart) {
-        removeFromCartLocal(product.id);
+        await removeCartItem(product.id);
       } else {
-        addToCartLocal(product as AppProduct);
+        await addCartItem(product as AppProduct, 1);
       }
+
+      if (isAuthenticated) {
+        await queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+      }
+
+      setOptimisticInCart(null);
+    } catch {
+      setOptimisticInCart(wasInCart);
+      toast.error("Не вдалося оновити кошик");
+      return;
+    } finally {
+      setIsCartActionPending(false);
     }
 
     toast.success(
@@ -156,25 +132,19 @@ export const ProductCard = ({
     e.preventDefault();
 
     const wasWishlisted = isWishlistedUi;
+    setIsWishlistActionPending(true);
 
-    if (isAuthenticated) {
-      setOptimisticWishlisted(!wasWishlisted);
+    try {
+      await toggleWishlistItem(product as AppProduct);
 
-      try {
-        if (wasWishlisted) {
-          await removeFromWishlistMutation.mutateAsync(product.id);
-        } else {
-          await addToWishlistMutation.mutateAsync(product.id);
-        }
-
-        toggleWishlistLocal(product as AppProduct);
-      } catch {
-        setOptimisticWishlisted(wasWishlisted);
-        toast.error("Не вдалося оновити список бажань");
-        return;
+      if (isAuthenticated) {
+        await queryClient.invalidateQueries({ queryKey: WISHLIST_QUERY_KEY });
       }
-    } else {
-      toggleWishlistLocal(product as AppProduct);
+    } catch {
+      toast.error("Не вдалося оновити список бажань");
+      return;
+    } finally {
+      setIsWishlistActionPending(false);
     }
 
     toast.success(wasWishlisted ? "Видалено з обраного" : "Додано до обраного");
@@ -185,10 +155,8 @@ export const ProductCard = ({
 
     if (isAuthenticated) {
       try {
-        await addToCartMutation.mutateAsync({
-          productId: product.id,
-          quantity: 1,
-        });
+        await addCartItem(product as AppProduct, 1);
+        await queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
       } catch {
         toast.error("Не вдалося додати товар у кошик");
         return;
@@ -320,6 +288,7 @@ export const ProductCard = ({
                   isWishlistedUi ? styles.listActionActive : ""
                 }`}
                 onClick={handleToggleWishlist}
+                disabled={isWishlistActionPending || wishlistIsSyncing}
                 title="В обране"
                 aria-label="Додати в обране"
                 aria-pressed={isWishlistedUi}
@@ -405,6 +374,7 @@ export const ProductCard = ({
               isWishlistedUi ? styles.wishlistActive : ""
             }`}
             onClick={handleToggleWishlist}
+            disabled={isWishlistActionPending || wishlistIsSyncing}
             title="В обране"
             aria-pressed={isWishlistedUi}
           >

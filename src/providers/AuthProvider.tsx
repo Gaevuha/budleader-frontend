@@ -2,12 +2,14 @@
 
 import {
   createContext,
+  useEffect,
   useContext,
   useMemo,
   type PropsWithChildren,
 } from "react";
 
 import { useAuth } from "@/hooks/useAuth";
+import { useAuthStore } from "@/store/auth/authStore";
 import type { User } from "@/types/auth";
 
 interface AuthProviderProps extends PropsWithChildren {
@@ -25,6 +27,11 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 export function AuthProvider({ children, initialUser }: AuthProviderProps) {
   const authQuery = useAuth({ initialData: initialUser });
   const user = authQuery.data ?? null;
+  const hydrateAuth = useAuthStore((state) => state.hydrate);
+
+  useEffect(() => {
+    hydrateAuth(user);
+  }, [hydrateAuth, user]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

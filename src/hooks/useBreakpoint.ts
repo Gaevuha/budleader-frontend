@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 
 const TABLET_BREAKPOINT = 768;
 const DESKTOP_BREAKPOINT = 1440;
@@ -25,34 +25,48 @@ const getBreakpointState = (width: number): BreakpointState => ({
   isDesktop: width >= DESKTOP_BREAKPOINT,
 });
 
-export function useBreakpoint(): BreakpointState {
-  const [breakpoint, setBreakpoint] = useState<BreakpointState>(() =>
-    getBreakpointState(375)
-  );
+const SERVER_BREAKPOINT_SNAPSHOT = getBreakpointState(DESKTOP_BREAKPOINT);
 
-  useEffect(() => {
+let cachedClientWidth: number | null = null;
+let cachedClientSnapshot: BreakpointState | null = null;
+
+const getClientSnapshot = (): BreakpointState => {
+  const width = window.innerWidth;
+
+  if (cachedClientSnapshot && cachedClientWidth === width) {
+    return cachedClientSnapshot;
+  }
+
+  const nextSnapshot = getBreakpointState(width);
+  cachedClientWidth = width;
+  cachedClientSnapshot = nextSnapshot;
+
+  return nextSnapshot;
+};
+
+export function useBreakpoint(): BreakpointState {
+  const subscribe = (callback: () => void) => {
     const mobileQuery = window.matchMedia(MOBILE_QUERY);
     const tabletQuery = window.matchMedia(TABLET_QUERY);
     const desktopQuery = window.matchMedia(DESKTOP_QUERY);
-
-    const updateBreakpoint = () => {
-      setBreakpoint(getBreakpointState(window.innerWidth));
-    };
-
     const mediaQueries = [mobileQuery, tabletQuery, desktopQuery];
 
-    updateBreakpoint();
-
+    window.addEventListener("resize", callback);
     mediaQueries.forEach((query) => {
-      query.addEventListener("change", updateBreakpoint);
+      query.addEventListener("change", callback);
     });
 
     return () => {
+      window.removeEventListener("resize", callback);
       mediaQueries.forEach((query) => {
-        query.removeEventListener("change", updateBreakpoint);
+        query.removeEventListener("change", callback);
       });
     };
-  }, []);
+  };
 
-  return breakpoint;
+  return useSyncExternalStore(
+    subscribe,
+    getClientSnapshot,
+    () => SERVER_BREAKPOINT_SNAPSHOT
+  );
 }

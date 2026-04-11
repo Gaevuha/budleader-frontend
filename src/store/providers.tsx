@@ -9,11 +9,7 @@ import {
 } from "@tanstack/react-query";
 
 import { USER_QUERY_KEY } from "@/queries/authQueries";
-import {
-  addToCartCSR,
-  addToWishlistCSR,
-  resetCommerceRequestCache,
-} from "@/services/apiClient";
+import { resetCommerceRequestCache } from "@/services/apiClient";
 import {
   type AuthBroadcastEvent,
   createAuthBroadcastChannel,
@@ -21,10 +17,12 @@ import {
 import { useCartQuery } from "@/queries/cartQueries";
 import { useUser } from "@/queries/authQueries";
 import { useWishlistQuery } from "@/queries/wishlistQueries";
-import { mapApiProductToAppProduct } from "@/services/api";
-import { useCartStore } from "@/store/cart/cartStore";
+import { GUEST_CART_STORAGE_KEY, useCartStore } from "@/store/cart/cartStore";
 import { useUIStore } from "@/store/ui/uiStore";
-import { useWishlistStore } from "@/store/wishlist/wishlistStore";
+import {
+  GUEST_WISHLIST_STORAGE_KEY,
+  useWishlistStore,
+} from "@/store/wishlist/wishlistStore";
 import { CART_QUERY_KEY } from "@/queries/cartQueries";
 import { WISHLIST_QUERY_KEY } from "@/queries/wishlistQueries";
 import {
@@ -44,6 +42,27 @@ interface ProvidersProps {
 const isMongoObjectId = (value: string): boolean =>
   /^[a-f0-9]{24}$/i.test(value);
 
+const GUEST_COMMERCE_TAB_KEY = "guest_commerce_tab_id";
+
+const ensureGuestCommerceTab = () => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const existingTabId = window.sessionStorage.getItem(GUEST_COMMERCE_TAB_KEY);
+
+  if (existingTabId) {
+    return;
+  }
+
+  window.localStorage.removeItem(GUEST_CART_STORAGE_KEY);
+  window.localStorage.removeItem(GUEST_WISHLIST_STORAGE_KEY);
+  window.sessionStorage.setItem(
+    GUEST_COMMERCE_TAB_KEY,
+    window.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random()}`
+  );
+};
+
 function AppBootstrap({
   initialTheme,
   initialUser,
@@ -55,12 +74,20 @@ function AppBootstrap({
   const userQuery = useUser({ initialData: initialUser });
   const user = userQuery.data;
   const isAuthenticated = Boolean(user);
-  const localCart = useCartStore((state) => state.cart);
-  const setCart = useCartStore((state) => state.setCart);
-  const clearCart = useCartStore((state) => state.clearCart);
-  const localWishlist = useWishlistStore((state) => state.wishlist);
-  const setWishlist = useWishlistStore((state) => state.setWishlist);
-  const clearWishlist = useWishlistStore((state) => state.clearWishlist);
+  const hydrateGuestCart = useCartStore((state) => state.hydrateGuestCart);
+  const syncCartWithServer = useCartStore((state) => state.syncWithServer);
+  const mergeGuestCart = useCartStore((state) => state.mergeGuestCart);
+  const resetCartState = useCartStore((state) => state.resetState);
+  const hydrateGuestWishlist = useWishlistStore(
+    (state) => state.hydrateGuestWishlist
+  );
+  const syncWishlistWithServer = useWishlistStore(
+    (state) => state.syncWithServer
+  );
+  const mergeGuestWishlist = useWishlistStore(
+    (state) => state.mergeGuestWishlist
+  );
+  const resetWishlistState = useWishlistStore((state) => state.resetState);
   const setTheme = useUIStore((state) => state.setTheme);
   const syncedUserIdRef = useRef<string | null>(null);
   const wasAuthenticatedRef = useRef(false);
@@ -89,6 +116,16 @@ function AppBootstrap({
   }, [initialTheme, resolvedAuthTheme, sessionKey, setTheme]);
 
   useEffect(() => {
+    if (isAuthenticated) {
+      return;
+    }
+
+    ensureGuestCommerceTab();
+    hydrateGuestCart();
+    hydrateGuestWishlist();
+  }, [hydrateGuestCart, hydrateGuestWishlist, isAuthenticated]);
+
+  useEffect(() => {
     const channel = createAuthBroadcastChannel();
 
     if (!channel) {
@@ -106,8 +143,8 @@ function AppBootstrap({
         queryClient.setQueryData(USER_QUERY_KEY, null);
         queryClient.removeQueries({ queryKey: CART_QUERY_KEY });
         queryClient.removeQueries({ queryKey: WISHLIST_QUERY_KEY });
-        clearCart();
-        clearWishlist();
+        resetCartState();
+        resetWishlistState();
         syncedUserIdRef.current = null;
         wasAuthenticatedRef.current = false;
         return;
@@ -124,11 +161,11 @@ function AppBootstrap({
       channel.removeEventListener("message", handleMessage);
       channel.close();
     };
-  }, [clearCart, clearWishlist, queryClient]);
+  }, [queryClient, resetCartState, resetWishlistState]);
 
   useEffect(() => {
     const isWishlistReadyForSync =
-      wishlistQuery.isFetched || localWishlist.length === 0;
+      wishlistQuery.isFetched || (wishlistQuery.data?.items?.length ?? 0) === 0;
 
     if (!isAuthenticated || !user?.id) {
       syncedUserIdRef.current = null;
@@ -146,35 +183,13 @@ function AppBootstrap({
     syncedUserIdRef.current = user.id;
 
     const syncCommerce = async () => {
-      const serverWishlistIds = new Set(
-        (wishlistQuery.data?.items ?? []).map((item) => item.id)
-      );
-      const wishlistIdsToSync = Array.from(
-        new Set(
-          localWishlist
-            .map((item) => item.id.trim())
-            .filter((id) => isMongoObjectId(id) && !serverWishlistIds.has(id))
-        )
+      await mergeGuestCart(cartQuery.data ?? null);
+
+      const safeServerWishlist = (wishlistQuery.data?.items ?? []).filter(
+        (item) => isMongoObjectId(item.id)
       );
 
-      for (const item of localCart) {
-        try {
-          await addToCartCSR({
-            productId: item.id,
-            quantity: Math.max(1, item.quantity),
-          });
-        } catch {
-          // Continue syncing remaining items even if one item fails.
-        }
-      }
-
-      for (const productId of wishlistIdsToSync) {
-        try {
-          await addToWishlistCSR(productId);
-        } catch {
-          // Skip invalid or already-synced wishlist items and continue.
-        }
-      }
+      await mergeGuestWishlist(safeServerWishlist);
 
       resetCommerceRequestCache();
       await Promise.all([
@@ -186,10 +201,12 @@ function AppBootstrap({
     void syncCommerce();
   }, [
     isAuthenticated,
-    localCart,
-    localWishlist,
+    cartQuery.data,
     queryClient,
     user?.id,
+    mergeGuestCart,
+    mergeGuestWishlist,
+    wishlistQuery.data,
     wishlistQuery.data?.items,
     wishlistQuery.isFetched,
   ]);
@@ -204,31 +221,8 @@ function AppBootstrap({
       return;
     }
 
-    const normalizedCart = serverItems.map((item) => ({
-      ...(item.product
-        ? mapApiProductToAppProduct(item.product) ?? {
-            id: item.productId,
-            name: "Товар",
-            price: item.price,
-            image: "",
-            category: "Загальна",
-            brand: "Budleader",
-            inStock: true,
-          }
-        : {
-            id: item.productId,
-            name: "Товар",
-            price: item.price,
-            image: "",
-            category: "Загальна",
-            brand: "Budleader",
-            inStock: true,
-          }),
-      quantity: item.quantity,
-    }));
-
-    setCart(normalizedCart);
-  }, [cartQuery.data?.items, isAuthenticated, setCart]);
+    void syncCartWithServer(cartQuery.data ?? null);
+  }, [cartQuery.data, isAuthenticated, syncCartWithServer]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -240,8 +234,8 @@ function AppBootstrap({
       return;
     }
 
-    setWishlist(serverWishlist);
-  }, [isAuthenticated, setWishlist, wishlistQuery.data?.items]);
+    void syncWishlistWithServer(serverWishlist);
+  }, [isAuthenticated, syncWishlistWithServer, wishlistQuery.data?.items]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -252,12 +246,20 @@ function AppBootstrap({
     // If a logged-in session existed, local persisted commerce state may
     // contain mirrored server data and should be cleared on logout.
     if (wasAuthenticatedRef.current) {
-      clearCart();
-      clearWishlist();
+      resetCartState();
+      resetWishlistState();
+      hydrateGuestCart();
+      hydrateGuestWishlist();
       syncedUserIdRef.current = null;
       wasAuthenticatedRef.current = false;
     }
-  }, [clearCart, clearWishlist, isAuthenticated]);
+  }, [
+    hydrateGuestCart,
+    hydrateGuestWishlist,
+    isAuthenticated,
+    resetCartState,
+    resetWishlistState,
+  ]);
 
   return null;
 }
