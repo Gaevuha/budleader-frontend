@@ -149,6 +149,19 @@
   justify-content: center;
   gap: 8px;
   cursor: pointer;
+  transition: background-color 0.2s ease, opacity 0.2s ease;
+}
+
+.addToCartBtn:hover:not(:disabled) {
+  background: var(--primary);
+}
+
+.addToCartBtnActive {
+  background: #16a34a;
+}
+
+.addToCartBtnActive:hover:not(:disabled) {
+  background: var(--primary);
 }
 
 .addToCartBtn:disabled {

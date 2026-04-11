@@ -83,6 +83,7 @@ export function CatalogClient({
   initialProducts,
   initialFilterProducts,
   initialBrandCounts,
+  initialPagination,
   initialCategory = "",
   initialBrands = [],
   initialIsNew = false,
@@ -96,7 +97,7 @@ export function CatalogClient({
   const { data: currentUser } = useUser();
   const { isDesktop, isMobile, isTablet } = useBreakpoint();
   const isCompactLayout = isMobile || isTablet;
-  const pageLimit = isDesktop ? DESKTOP_PAGE_LIMIT : COMPACT_PAGE_LIMIT;
+  const pageLimit = isCompactLayout ? COMPACT_PAGE_LIMIT : DESKTOP_PAGE_LIMIT;
   const [searchTerm, setSearchTerm] = useState(initialSearch);
   const searchTermRef = useRef(searchTerm);
   const urlSearchTerm = (searchParams.get("search") ?? "").trim();
@@ -134,7 +135,9 @@ export function CatalogClient({
   );
   const [pendingViewMode, setPendingViewMode] =
     useState<CatalogViewMode | null>(null);
-  const [showInitialLoader, setShowInitialLoader] = useState(true);
+  const [showInitialLoader, setShowInitialLoader] = useState(
+    () => initialProducts.length === 0
+  );
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const viewModeSaveRequestIdRef = useRef(0);
 
@@ -155,6 +158,13 @@ export function CatalogClient({
     currentUser?.catalogViewMode ?? guestViewMode ?? DEFAULT_CATALOG_VIEW_MODE;
   const viewMode = pendingViewMode ?? persistedViewMode;
   const effectiveViewMode: CatalogViewMode = isDesktop ? viewMode : "grid";
+  const canUseInitialServerPayload =
+    currentPage === 1 &&
+    pageLimit === DESKTOP_PAGE_LIMIT &&
+    effectiveBrands.join(",") === initialBrands.join(",") &&
+    effectiveIsNew === initialIsNew &&
+    effectiveIsSale === initialIsSale &&
+    debouncedSearchTerm.trim() === initialSearch.trim();
 
   useEffect(() => {
     const prevUrlSearch = prevUrlSearchRef.current;
@@ -309,12 +319,21 @@ export function CatalogClient({
         throw new Error("Не вдалося завантажити товари каталогу");
       }
     },
-    placeholderData: isDesktop ? keepPreviousData : undefined,
+    initialData: canUseInitialServerPayload
+      ? {
+          products: initialProductsMapped,
+          pagination: initialPagination,
+        }
+      : undefined,
+    placeholderData:
+      pageLimit === DESKTOP_PAGE_LIMIT ? keepPreviousData : undefined,
   });
 
   const products = useMemo(
-    () => productsQuery.data?.products ?? [],
-    [productsQuery.data?.products]
+    () =>
+      productsQuery.data?.products ??
+      (currentPage === 1 ? initialProductsMapped : []),
+    [currentPage, initialProductsMapped, productsQuery.data?.products]
   );
   const pagination = useMemo(
     () => productsQuery.data?.pagination ?? null,

@@ -1,7 +1,20 @@
+import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 
 import { getUser } from "@/services/apiServer";
+
+export const metadata: Metadata = {
+  title: {
+    default: "Профіль",
+    template: "%s | Профіль | Будлідер",
+  },
+  description: "Особистий кабінет користувача Будлідер.",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 interface ProfileLayoutProps {
   children: ReactNode;

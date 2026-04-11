@@ -7,6 +7,7 @@ import axios, {
 } from "axios";
 
 import type { AppProduct } from "@/types/app";
+import type { Pagination } from "@/types/api";
 import type { Product } from "@/types/product";
 import { PRODUCT_PLACEHOLDER_SRC, resolveMediaUrl } from "@/utils/media";
 
@@ -20,7 +21,7 @@ export const API_BASE_URL = normalizeApiBaseUrl(
 );
 export const API_TIMEOUT_MS = 15_000;
 export const API_PROXY_PREFIX = "/api/proxy";
-export const AUTH_API_URL = `${API_BASE_URL}/api/auth`;
+export const AUTH_API_URL = "/api/auth";
 const REFRESH_ENDPOINT_PATH = "/api/auth/refresh";
 const AUTH_ENDPOINT_PREFIX = "/api/auth";
 const CATALOG_BACKOFF_MS = 15_000;
@@ -481,8 +482,71 @@ export const extractApiProducts = (payload: unknown): unknown[] => {
   return [];
 };
 
-export const mapApiPayloadToAppProducts = (payload: unknown): AppProduct[] => {
+export const mapApiPayloadToProducts = (payload: unknown): Product[] => {
   return extractApiProducts(payload)
+    .map((item) => normalizeProductCore(item))
+    .filter((item): item is Product => item !== null);
+};
+
+export const extractApiPagination = (payload: unknown): Pagination | null => {
+  if (!payload || typeof payload !== "object") {
+    return null;
+  }
+
+  const candidate = payload as Record<string, unknown>;
+
+  const pick = (record: Record<string, unknown>, key: string): unknown => {
+    return record[key];
+  };
+
+  let pagination: Record<string, unknown> | null = null;
+
+  if (
+    pick(candidate, "pagination") &&
+    typeof pick(candidate, "pagination") === "object"
+  ) {
+    pagination = pick(candidate, "pagination") as Record<string, unknown>;
+  } else if (
+    pick(candidate, "data") &&
+    typeof pick(candidate, "data") === "object"
+  ) {
+    const nestedData = pick(candidate, "data") as Record<string, unknown>;
+    const nestedPagination = nestedData.pagination;
+
+    if (nestedPagination && typeof nestedPagination === "object") {
+      pagination = nestedPagination as Record<string, unknown>;
+    } else {
+      pagination = {
+        page: nestedData.page ?? nestedData.currentPage,
+        limit: nestedData.limit ?? nestedData.itemsPerPage,
+        total: nestedData.total ?? nestedData.totalItems,
+        totalPages: nestedData.totalPages,
+      };
+    }
+  }
+
+  if (!pagination || typeof pagination !== "object") {
+    return null;
+  }
+
+  const normalized = {
+    page: pagination.page ?? pagination.currentPage,
+    limit: pagination.limit ?? pagination.itemsPerPage,
+    total: pagination.total ?? pagination.totalItems,
+    totalPages: pagination.totalPages,
+  };
+
+  const hasNumbers =
+    Number.isFinite(normalized.page) &&
+    Number.isFinite(normalized.limit) &&
+    Number.isFinite(normalized.total) &&
+    Number.isFinite(normalized.totalPages);
+
+  return hasNumbers ? (normalized as Pagination) : null;
+};
+
+export const mapApiPayloadToAppProducts = (payload: unknown): AppProduct[] => {
+  return mapApiPayloadToProducts(payload)
     .map((item) => mapApiProductToAppProduct(item))
     .filter((item): item is AppProduct => item !== null);
 };

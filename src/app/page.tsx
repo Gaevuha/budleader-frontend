@@ -1,8 +1,16 @@
+import type { Metadata } from "next";
+
 import { HomeClient } from "@/components/home/HomeClient";
 import { getCategories, getProductsSSR } from "@/services/apiServer";
 import { mapApiProductToAppProduct } from "@/services/api";
 import type { Category } from "@/types/category";
 import type { AppProduct } from "@/types/app";
+
+export const metadata: Metadata = {
+  title: "Головна",
+  description:
+    "Будлідер: каталог будівельних матеріалів, популярні товари, категорії та швидкий підбір для ремонту й будівництва.",
+};
 
 export const dynamic = "force-dynamic";
 

@@ -106,22 +106,22 @@ export const AuthModal = () => {
       return;
     }
 
+    const storedReturnTo =
+      typeof window !== "undefined"
+        ? window.sessionStorage.getItem("budleader-auth-return-to")
+        : null;
+
+    if (storedReturnTo && storedReturnTo.startsWith("/")) {
+      router.replace(storedReturnTo);
+      return;
+    }
+
     const isAuthRoute =
       pathname === "/login" ||
       pathname === "/register" ||
       pathname === "/forgot-password";
 
     if (isAuthRoute) {
-      const storedReturnTo =
-        typeof window !== "undefined"
-          ? window.sessionStorage.getItem("budleader-auth-return-to")
-          : null;
-
-      if (storedReturnTo && storedReturnTo.startsWith("/")) {
-        router.replace(storedReturnTo);
-        return;
-      }
-
       router.replace("/");
       return;
     }

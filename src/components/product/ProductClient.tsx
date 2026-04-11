@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
@@ -17,16 +17,8 @@ import { mapApiProductToAppProduct } from "@/services/api";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { useUser } from "@/queries/authQueries";
-import {
-  useAddToCartMutation,
-  useCartQuery,
-  useRemoveFromCartMutation,
-} from "@/queries/cartQueries";
-import {
-  useAddToWishlistMutation,
-  useRemoveFromWishlistMutation,
-  useWishlistQuery,
-} from "@/queries/wishlistQueries";
+import { CART_QUERY_KEY } from "@/queries/cartQueries";
+import { WISHLIST_QUERY_KEY } from "@/queries/wishlistQueries";
 import {
   productReviewsQueryKey,
   useProductReviewsQuery,
@@ -42,25 +34,22 @@ type RawProduct = Product & {
 
 export function ProductClient({ product }: ProductClientProps) {
   const queryClient = useQueryClient();
-  const localCart = useCartStore((state) => state.cart);
-  const addToCartLocal = useCartStore((state) => state.addToCart);
-  const removeFromCartLocal = useCartStore((state) => state.removeFromCart);
-  const wishlistLocal = useWishlistStore((state) => state.wishlist);
-  const toggleWishlistLocal = useWishlistStore((state) => state.toggleWishlist);
-  const addToCartMutation = useAddToCartMutation();
-  const removeFromCartMutation = useRemoveFromCartMutation();
-  const addToWishlistMutation = useAddToWishlistMutation();
-  const removeFromWishlistMutation = useRemoveFromWishlistMutation();
+  const cartItems = useCartStore((state) => state.cart);
+  const addCartItem = useCartStore((state) => state.addToCart);
+  const removeCartItem = useCartStore((state) => state.removeFromCart);
+  const isCartProductPending = useCartStore((state) =>
+    state.pendingProductIds.includes(product.id)
+  );
+  const wishlistItems = useWishlistStore((state) => state.wishlist);
+  const toggleWishlistItem = useWishlistStore((state) => state.toggleWishlist);
+  const wishlistIsSyncing = useWishlistStore((state) => state.isSyncing);
   const { data: currentUser } = useUser();
   const isAuthenticated = Boolean(currentUser);
-  const cartQuery = useCartQuery(isAuthenticated);
-  const wishlistQuery = useWishlistQuery(isAuthenticated);
+  const [isCartActionPending, setIsCartActionPending] = useState(false);
+  const [isWishlistActionPending, setIsWishlistActionPending] = useState(false);
   const [optimisticInCart, setOptimisticInCart] = useState<boolean | null>(
     null
   );
-  const [optimisticWishlisted, setOptimisticWishlisted] = useState<
-    boolean | null
-  >(null);
 
   const [reviewText, setReviewText] = useState("");
   const [guestName, setGuestName] = useState("");
@@ -88,19 +77,16 @@ export function ProductClient({ product }: ProductClientProps) {
     };
   }, [product]);
 
-  const serverWishlist = wishlistQuery.data?.items ?? [];
-  const serverCartItems = cartQuery.data?.items ?? [];
-  const effectiveWishlist = isAuthenticated ? serverWishlist : wishlistLocal;
-  const isWishlisted = effectiveWishlist.some(
+  const isWishlistedUi = wishlistItems.some(
     (item) => item.id === appProduct.id
   );
-  const isInCart = isAuthenticated
-    ? serverCartItems.some(
-        (item) => item.productId === appProduct.id || item.id === appProduct.id
-      )
-    : localCart.some((item) => item.id === appProduct.id);
-  const isWishlistedUi = optimisticWishlisted ?? isWishlisted;
-  const isInCartUi = optimisticInCart ?? isInCart;
+  const actualIsInCartUi = cartItems.some(
+    (item) => item.productId === appProduct.id || item.id === appProduct.id
+  );
+  const isInCartUi =
+    optimisticInCart !== null && optimisticInCart !== actualIsInCartUi
+      ? optimisticInCart
+      : actualIsInCartUi;
   const imageSrc = imageFailed ? PRODUCT_PLACEHOLDER_SRC : appProduct.image;
   const initialReviews = (product as RawProduct).reviews ?? [];
   const initialAverageRating =
@@ -126,46 +112,33 @@ export function ProductClient({ product }: ProductClientProps) {
   const overallRating = Math.max(0, Math.min(5, reviewsData.averageRating));
   const totalReviews = Math.max(0, reviewsData.totalReviews);
 
-  useEffect(() => {
-    setOptimisticInCart(null);
-  }, [isInCart]);
-
-  useEffect(() => {
-    setOptimisticWishlisted(null);
-  }, [isWishlisted]);
-
   const handleAddToCart = async () => {
+    if (isCartActionPending || isCartProductPending) {
+      return;
+    }
+
     const wasInCart = isInCartUi;
-    const cartEntry = serverCartItems.find(
-      (item) => item.productId === appProduct.id || item.id === appProduct.id
-    );
-    const removeProductId = cartEntry?.productId ?? appProduct.id;
+    setOptimisticInCart(!wasInCart);
+    setIsCartActionPending(true);
 
-    if (isAuthenticated) {
-      setOptimisticInCart(!wasInCart);
-
-      try {
-        if (wasInCart) {
-          await removeFromCartMutation.mutateAsync(removeProductId);
-          removeFromCartLocal(appProduct.id);
-        } else {
-          await addToCartMutation.mutateAsync({
-            productId: appProduct.id,
-            quantity: 1,
-          });
-          addToCartLocal(appProduct);
-        }
-      } catch {
-        setOptimisticInCart(wasInCart);
-        toast.error("Не вдалося оновити кошик");
-        return;
-      }
-    } else {
+    try {
       if (wasInCart) {
-        removeFromCartLocal(appProduct.id);
+        await removeCartItem(appProduct.id);
       } else {
-        addToCartLocal(appProduct);
+        await addCartItem(appProduct, 1);
       }
+
+      if (isAuthenticated) {
+        await queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
+      }
+
+      setOptimisticInCart(null);
+    } catch {
+      setOptimisticInCart(wasInCart);
+      toast.error("Не вдалося оновити кошик");
+      return;
+    } finally {
+      setIsCartActionPending(false);
     }
 
     toast.success(
@@ -175,25 +148,19 @@ export function ProductClient({ product }: ProductClientProps) {
 
   const handleToggleWishlist = async () => {
     const wasWishlisted = isWishlistedUi;
+    setIsWishlistActionPending(true);
 
-    if (isAuthenticated) {
-      setOptimisticWishlisted(!wasWishlisted);
+    try {
+      await toggleWishlistItem(appProduct);
 
-      try {
-        if (wasWishlisted) {
-          await removeFromWishlistMutation.mutateAsync(appProduct.id);
-        } else {
-          await addToWishlistMutation.mutateAsync(appProduct.id);
-        }
-
-        toggleWishlistLocal(appProduct);
-      } catch {
-        setOptimisticWishlisted(wasWishlisted);
-        toast.error("Не вдалося оновити список бажань");
-        return;
+      if (isAuthenticated) {
+        await queryClient.invalidateQueries({ queryKey: WISHLIST_QUERY_KEY });
       }
-    } else {
-      toggleWishlistLocal(appProduct);
+    } catch {
+      toast.error("Не вдалося оновити список бажань");
+      return;
+    } finally {
+      setIsWishlistActionPending(false);
     }
 
     toast.success(wasWishlisted ? "Видалено з обраного" : "Додано до обраного");
@@ -349,7 +316,9 @@ export function ProductClient({ product }: ProductClientProps) {
 
           <div className={styles.actions}>
             <button
-              className={styles.addToCartBtn}
+              className={`${styles.addToCartBtn} ${
+                isInCartUi ? styles.addToCartBtnActive : ""
+              }`}
               disabled={!appProduct.inStock}
               onClick={handleAddToCart}
             >
@@ -360,6 +329,7 @@ export function ProductClient({ product }: ProductClientProps) {
                 isWishlistedUi ? styles.wishlistActive : ""
               }`}
               onClick={handleToggleWishlist}
+              disabled={isWishlistActionPending || wishlistIsSyncing}
             >
               <Heart
                 size={18}

@@ -8,8 +8,8 @@ import { toast } from "@/components/UI/notifications/toast";
 import { Container } from "@/components/layout/Container/Container";
 import { Button } from "@/components/UI/Button/Button";
 import { useUser } from "@/queries/authQueries";
-import { CART_QUERY_KEY, useCartQuery } from "@/queries/cartQueries";
-import { clearCartCSR, createOrderCSR } from "@/services/apiClient";
+import { CART_QUERY_KEY } from "@/queries/cartQueries";
+import { createOrderCSR } from "@/services/apiClient";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
 import styles from "./Checkout.module.css";
@@ -52,9 +52,9 @@ export default function CheckoutPage() {
 
   const clearLocalCart = useCartStore((state) => state.clearCart);
   const localCart = useCartStore((state) => state.cart);
+  const cartIsSyncing = useCartStore((state) => state.isSyncing);
   const { data: currentUser } = useUser();
   const isAuthenticated = Boolean(currentUser);
-  const cartQuery = useCartQuery(isAuthenticated);
 
   useEffect(() => {
     if (!currentUser) {
@@ -74,13 +74,9 @@ export default function CheckoutPage() {
   }, [currentUser, fullName, phone]);
 
   const items = useMemo(() => {
-    if (isAuthenticated) {
-      return cartQuery.data?.items ?? [];
-    }
-
     return localCart.map((item) => ({
       id: item.id,
-      productId: item.id,
+      productId: item.productId || item.id,
       quantity: item.quantity,
       price: item.price,
       product: {
@@ -90,7 +86,7 @@ export default function CheckoutPage() {
         image: item.image,
       },
     }));
-  }, [cartQuery.data?.items, isAuthenticated, localCart]);
+  }, [localCart]);
   const total = useMemo(
     () => items.reduce((sum, item) => sum + item.price * item.quantity, 0),
     [items]
@@ -100,6 +96,10 @@ export default function CheckoutPage() {
     event.preventDefault();
 
     if (!isAuthenticated) {
+      if (typeof window !== "undefined") {
+        window.sessionStorage.setItem("budleader-auth-return-to", "/checkout");
+      }
+
       openAuthModal("login");
       return;
     }
@@ -139,12 +139,11 @@ export default function CheckoutPage() {
       });
 
       try {
-        await clearCartCSR();
+        await clearLocalCart();
       } catch {
         // Do not fail completed order if cart cleanup request is temporarily unavailable.
       }
 
-      clearLocalCart();
       queryClient.setQueryData(CART_QUERY_KEY, {
         items: [],
         subtotal: 0,
@@ -203,7 +202,19 @@ export default function CheckoutPage() {
             Перегляд замовлення доступний усім, але підтвердження доступне лише
             після входу.
           </p>
-          <Button variant="primary" onClick={() => openAuthModal("login")}>
+          <Button
+            variant="primary"
+            onClick={() => {
+              if (typeof window !== "undefined") {
+                window.sessionStorage.setItem(
+                  "budleader-auth-return-to",
+                  "/checkout"
+                );
+              }
+
+              openAuthModal("login");
+            }}
+          >
             Увійти для оформлення
           </Button>
         </div>
@@ -241,7 +252,7 @@ export default function CheckoutPage() {
             type="submit"
             variant="primary"
             size="lg"
-            disabled={isSubmitting}
+            disabled={isSubmitting || cartIsSyncing}
           >
             {isSubmitting ? "Оформлюємо..." : "Підтвердити замовлення"}
           </Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -30,7 +30,6 @@ import type { LucideIcon } from "lucide-react";
 
 import { Container } from "@/components/layout/Container/Container";
 import { ProductCard } from "@/components/product/ProductCard/ProductCard";
-import { getCategoryProductsCSR } from "@/services/apiClient";
 import type { AppProduct } from "@/types/app";
 import type { Category } from "@/types/category";
 import type { CategorySubcategoryLink } from "@/types/category";
@@ -135,13 +134,6 @@ export function HomeClient({
 }: HomeClientProps) {
   const [isCatalogExpanded, setIsCatalogExpanded] = useState(false);
   const collapsedCategoryCount = 14;
-  const [activeCategoryId, setActiveCategoryId] = useState<string>("");
-  const [loadingCategoryId, setLoadingCategoryId] = useState<string | null>(
-    null
-  );
-  const [loadedCategoryLinks, setLoadedCategoryLinks] = useState<
-    Record<string, CategoryProductLink[]>
-  >({});
 
   const categories = initialCategories;
   const products = initialProducts;
@@ -150,12 +142,6 @@ export function HomeClient({
   const visibleCategories = isCatalogExpanded
     ? categories
     : categories.slice(0, collapsedCategoryCount);
-
-  useEffect(() => {
-    if (visibleCategories.length > 0 && !activeCategoryId) {
-      setActiveCategoryId(visibleCategories[0].id);
-    }
-  }, [activeCategoryId, visibleCategories]);
 
   const newProducts = useMemo(() => {
     const flagged = products.filter((p) => p.isNew).slice(0, 4);
@@ -219,70 +205,6 @@ export function HomeClient({
     return byCategoryId;
   }, [categories, products]);
 
-  useEffect(() => {
-    const loadCategoryProducts = async () => {
-      if (!isCatalogExpanded || !activeCategoryId) {
-        return;
-      }
-
-      if (loadedCategoryLinks[activeCategoryId]) {
-        return;
-      }
-
-      const activeCategory = categories.find(
-        (category) => category.id === activeCategoryId
-      );
-
-      if (!activeCategory || activeCategory.subcategories?.length) {
-        return;
-      }
-
-      setLoadingCategoryId(activeCategoryId);
-
-      try {
-        const categoryProducts = await getCategoryProductsCSR(
-          activeCategory,
-          18
-        );
-        const categoryLinks = categoryProducts
-          .map((product) => ({
-            id: product.id,
-            name: product.name,
-          }))
-          .filter(
-            (item, index, arr) =>
-              arr.findIndex((entry) => entry.id === item.id) === index
-          )
-          .slice(0, 18);
-
-        setLoadedCategoryLinks((prev) => ({
-          ...prev,
-          [activeCategoryId]:
-            categoryLinks.length > 0
-              ? categoryLinks
-              : fallbackSubmenuByCategory[activeCategoryId] ?? [],
-        }));
-      } catch {
-        setLoadedCategoryLinks((prev) => ({
-          ...prev,
-          [activeCategoryId]: fallbackSubmenuByCategory[activeCategoryId] ?? [],
-        }));
-      } finally {
-        setLoadingCategoryId((current) =>
-          current === activeCategoryId ? null : current
-        );
-      }
-    };
-
-    void loadCategoryProducts();
-  }, [
-    activeCategoryId,
-    categories,
-    fallbackSubmenuByCategory,
-    isCatalogExpanded,
-    loadedCategoryLinks,
-  ]);
-
   return (
     <>
       <section className={styles.heroSection}>
@@ -308,9 +230,7 @@ export function HomeClient({
                         category.id
                       )}`;
                       const fallbackLinks =
-                        loadedCategoryLinks[category.id] ??
-                        fallbackSubmenuByCategory[category.id] ??
-                        [];
+                        fallbackSubmenuByCategory[category.id] ?? [];
                       const hasSubcategories =
                         Array.isArray(category.subcategories) &&
                         category.subcategories.length > 0;
@@ -320,9 +240,6 @@ export function HomeClient({
                           <Link
                             href={categoryHref}
                             className={styles.catalogLink}
-                            onMouseEnter={() =>
-                              setActiveCategoryId(category.id)
-                            }
                           >
                             <Icon
                               size={20}
@@ -382,11 +299,7 @@ export function HomeClient({
                                     {category.name}
                                   </Link>
                                 </h4>
-                                {loadingCategoryId === category.id ? (
-                                  <ul className={styles.submenuList}>
-                                    <li>Завантаження товарів...</li>
-                                  </ul>
-                                ) : fallbackLinks.length > 0 ? (
+                                {fallbackLinks.length > 0 ? (
                                   <ul className={styles.submenuList}>
                                     {fallbackLinks.map((item) => (
                                       <li key={item.id}>

@@ -27,7 +27,10 @@ export function AppChrome({
 
   return (
     <>
-      <NotificationCenter variant={isAdminRoute ? "admin" : "public"} />
+      <NotificationCenter
+        variant={isAdminRoute ? "admin" : "public"}
+        placement="bottomCenter"
+      />
       <AuthModal />
       {!isAdminRoute ? (
         <Header categories={categories} initialTheme={initialTheme} />

@@ -4,6 +4,7 @@ import {
   api,
   apiFetch,
   AUTH_API_URL,
+  extractApiPagination,
   mapApiPayloadToAppProducts,
   mapApiProductToAppProduct,
 } from "@/services/api";
@@ -14,6 +15,7 @@ import type { Pagination } from "@/types/api";
 import type { AppProduct, ProductReview } from "@/types/app";
 import type { CartData } from "@/types/cart";
 import type { CreateOrderPayload, Order, OrdersResult } from "@/types/order";
+import { PRODUCT_PLACEHOLDER_SRC, resolveMediaUrl } from "@/utils/media";
 import type {
   ChangePasswordPayload,
   ForgotPasswordPayload,
@@ -118,69 +120,6 @@ const uniqueCategoryTokens = (category: CategoryLookupInput): string[] => {
     .filter((value, index, arr) => arr.indexOf(value) === index);
 };
 
-const extractPagination = (payload: unknown): Pagination | null => {
-  if (!payload || typeof payload !== "object") {
-    return null;
-  }
-
-  const candidate = payload as Record<string, unknown>;
-
-  const pick = (record: Record<string, unknown>, key: string): unknown => {
-    return record[key];
-  };
-
-  // Try multiple locations for pagination data
-  let pagination: Record<string, unknown> | null = null;
-
-  // Option 1: explicit pagination object at top level
-  if (
-    pick(candidate, "pagination") &&
-    typeof pick(candidate, "pagination") === "object"
-  ) {
-    pagination = pick(candidate, "pagination") as Record<string, unknown>;
-  }
-  // Option 2: explicit pagination object nested in data
-  else if (
-    pick(candidate, "data") &&
-    typeof pick(candidate, "data") === "object"
-  ) {
-    const nestedData = pick(candidate, "data") as Record<string, unknown>;
-    const nestedPagination = nestedData.pagination;
-
-    if (nestedPagination && typeof nestedPagination === "object") {
-      pagination = nestedPagination as Record<string, unknown>;
-    } else {
-      // Option 3: pagination fields are top-level in data object
-      pagination = {
-        page: nestedData.page ?? nestedData.currentPage,
-        limit: nestedData.limit ?? nestedData.itemsPerPage,
-        total: nestedData.total ?? nestedData.totalItems,
-        totalPages: nestedData.totalPages,
-      };
-    }
-  }
-
-  if (!pagination || typeof pagination !== "object") {
-    return null;
-  }
-
-  // Normalize field names in case pagination object doesn't have standard names
-  const normalized = {
-    page: pagination.page ?? pagination.currentPage,
-    limit: pagination.limit ?? pagination.itemsPerPage,
-    total: pagination.total ?? pagination.totalItems,
-    totalPages: pagination.totalPages,
-  };
-
-  const hasNumbers =
-    Number.isFinite(normalized.page) &&
-    Number.isFinite(normalized.limit) &&
-    Number.isFinite(normalized.total) &&
-    Number.isFinite(normalized.totalPages);
-
-  return hasNumbers ? (normalized as Pagination) : null;
-};
-
 export async function getProductsCSR(
   params: GetProductsCSRParams
 ): Promise<GetProductsCSRResult> {
@@ -224,7 +163,7 @@ export async function getProductsCSR(
   }
 
   const products = mapApiPayloadToAppProducts(payload);
-  const pagination = extractPagination(payload);
+  const pagination = extractApiPagination(payload);
 
   return { products, pagination };
 }
@@ -244,7 +183,7 @@ export async function fetchProducts({
 
   return {
     products: mapApiPayloadToAppProducts(response.data),
-    pagination: extractPagination(response.data),
+    pagination: extractApiPagination(response.data),
   };
 }
 
@@ -469,6 +408,67 @@ const normalizeCartPayload = (payload: unknown): CartData => {
     | ApiResponse<CartData>
     | { data?: CartData };
 
+  const toFiniteNumberOr = (value: unknown, fallback: number): number => {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  };
+
+  const normalizeCartItem = (item: Record<string, unknown>) => {
+    const productObj =
+      item.product && typeof item.product === "object"
+        ? (item.product as Record<string, unknown>)
+        : null;
+
+    const productId =
+      (item.productId as string | undefined) ??
+      (productObj?._id as string | undefined) ??
+      (productObj?.id as string | undefined) ??
+      (item.product as string | undefined) ??
+      "";
+
+    const quantity = Math.max(1, toFiniteNumberOr(item.quantity, 1));
+    const unitPrice = Math.max(
+      0,
+      toFiniteNumberOr(item.price, toFiniteNumberOr(productObj?.price, 0))
+    );
+    const stock =
+      productObj && ("stock" in productObj || "quantity" in productObj)
+        ? Math.max(
+            0,
+            toFiniteNumberOr(productObj.stock ?? productObj.quantity, 0)
+          )
+        : undefined;
+
+    return {
+      id: (item.id as string | undefined) ?? productId,
+      productId,
+      quantity,
+      price: unitPrice,
+      product: productObj
+        ? {
+            ...(productObj as object),
+            id: (productObj.id as string | undefined) ?? productId,
+            name:
+              (productObj.name as string | undefined)?.trim() ||
+              "Товар без назви",
+            price: unitPrice,
+            stock,
+            image: resolveMediaUrl(
+              (productObj.image as string | undefined) ??
+                (productObj.mainImage as string | undefined) ??
+                PRODUCT_PLACEHOLDER_SRC
+            ),
+          }
+        : {
+            id: productId,
+            name: "Товар без назви",
+            price: unitPrice,
+            stock,
+            image: PRODUCT_PLACEHOLDER_SRC,
+          },
+    };
+  };
+
   if (payload && typeof payload === "object") {
     const raw = payload as Record<string, unknown>;
     const nested =
@@ -477,7 +477,9 @@ const normalizeCartPayload = (payload: unknown): CartData => {
         : null;
 
     if (nested && Array.isArray(nested.items)) {
-      const items = nested.items as Array<Record<string, unknown>>;
+      const items = (nested.items as Array<Record<string, unknown>>).map(
+        normalizeCartItem
+      );
       const subtotal =
         typeof nested.subtotal === "number" && Number.isFinite(nested.subtotal)
           ? nested.subtotal
@@ -492,45 +494,7 @@ const normalizeCartPayload = (payload: unknown): CartData => {
             }, 0);
 
       return {
-        items: items.map((item) => {
-          const productObj =
-            item.product && typeof item.product === "object"
-              ? (item.product as Record<string, unknown>)
-              : null;
-
-          const productId =
-            (item.productId as string | undefined) ??
-            (productObj?._id as string | undefined) ??
-            (productObj?.id as string | undefined) ??
-            "";
-
-          const quantity = Number(item.quantity ?? 1);
-          const price = Number(item.price ?? productObj?.price ?? 0);
-
-          return {
-            id: (item.id as string | undefined) ?? productId,
-            productId,
-            quantity: Number.isFinite(quantity) ? quantity : 1,
-            price: Number.isFinite(price) ? price : 0,
-            product: productObj
-              ? {
-                  ...(productObj as object),
-                  id: (productObj.id as string | undefined) ?? productId,
-                  name:
-                    (productObj.name as string | undefined) ??
-                    "Товар без назви",
-                  price: Number(
-                    Number.isFinite(Number(productObj.price))
-                      ? Number(productObj.price)
-                      : price
-                  ),
-                  image:
-                    (productObj.image as string | undefined) ??
-                    (productObj.mainImage as string | undefined),
-                }
-              : undefined,
-          };
-        }),
+        items,
         subtotal,
         itemsCount,
       };
@@ -538,40 +502,9 @@ const normalizeCartPayload = (payload: unknown): CartData => {
 
     // Backend cart mutations may return a plain cart array in data.
     if (Array.isArray(raw.data)) {
-      const items = (raw.data as Array<Record<string, unknown>>).map((item) => {
-        const productObj =
-          item.product && typeof item.product === "object"
-            ? (item.product as Record<string, unknown>)
-            : null;
-
-        const productId =
-          (productObj?._id as string | undefined) ??
-          (item.productId as string | undefined) ??
-          (item.product as string | undefined) ??
-          "";
-
-        const quantity = Number(item.quantity ?? 1);
-        const price = Number(productObj?.price ?? item.price ?? 0);
-
-        return {
-          id: productId,
-          productId,
-          quantity: Number.isFinite(quantity) ? quantity : 1,
-          price: Number.isFinite(price) ? price : 0,
-          product: productObj
-            ? {
-                ...(productObj as object),
-                id: (productObj.id as string | undefined) ?? productId,
-                name:
-                  (productObj.name as string | undefined) ?? "Товар без назви",
-                price: Number.isFinite(price) ? price : 0,
-                image:
-                  (productObj.image as string | undefined) ??
-                  (productObj.mainImage as string | undefined),
-              }
-            : undefined,
-        };
-      });
+      const items = (raw.data as Array<Record<string, unknown>>).map(
+        normalizeCartItem
+      );
 
       const subtotal = items.reduce(
         (sum, item) => sum + item.price * item.quantity,
@@ -587,7 +520,19 @@ const normalizeCartPayload = (payload: unknown): CartData => {
     (candidate as CartData).items &&
     Array.isArray((candidate as CartData).items)
   ) {
-    return candidate as CartData;
+    const rawCart = candidate as CartData;
+    const items = (rawCart.items as Array<Record<string, unknown>>).map(
+      normalizeCartItem
+    );
+
+    return {
+      items,
+      subtotal: items.reduce(
+        (sum, item) => sum + item.price * item.quantity,
+        0
+      ),
+      itemsCount: items.reduce((sum, item) => sum + item.quantity, 0),
+    };
   }
 
   return {
@@ -1002,13 +947,16 @@ export function getOAuthRedirectUrl(
   provider: "google" | "facebook",
   returnTo?: string
 ): string {
-  const url = new URL(`${AUTH_API_URL}/${provider}`);
+  const search = new URLSearchParams();
 
   if (returnTo?.trim()) {
-    url.searchParams.set("returnTo", returnTo);
+    search.set("state", returnTo.trim());
   }
 
-  return url.toString();
+  const query = search.toString();
+  return query
+    ? `${AUTH_API_URL}/${provider}?${query}`
+    : `${AUTH_API_URL}/${provider}`;
 }
 
 export async function getCartCSR(): Promise<CartData> {
@@ -1036,55 +984,41 @@ export async function getCartCSR(): Promise<CartData> {
   return cartRequest;
 }
 
+const refreshCartAfterMutation = async (): Promise<CartData> => {
+  cartRequest = null;
+  cartSnapshot = null;
+
+  return getCartCSR();
+};
+
 export async function addToCartCSR(
   payload: AddToCartPayload
 ): Promise<CartData> {
-  const data = await apiFetch<ApiResponse<CartData> | CartData>(
-    `${USERS_PROXY_BASE}/cart`,
-    {
-      method: "POST",
-      body: payload,
-    }
-  );
+  await apiFetch<ApiResponse<CartData> | CartData>(`${USERS_PROXY_BASE}/cart`, {
+    method: "POST",
+    body: payload,
+  });
 
-  const normalized = normalizeCartPayload(data);
-  cartSnapshot = {
-    value: normalized,
-    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
-  };
-  return normalized;
+  return refreshCartAfterMutation();
 }
 
 export async function removeFromCartCSR(productId: string): Promise<CartData> {
-  const data = await apiFetch<ApiResponse<CartData> | CartData>(
+  await apiFetch<ApiResponse<CartData> | CartData>(
     `${USERS_PROXY_BASE}/cart/${productId}`,
     {
       method: "DELETE",
     }
   );
 
-  const normalized = normalizeCartPayload(data);
-  cartSnapshot = {
-    value: normalized,
-    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
-  };
-  return normalized;
+  return refreshCartAfterMutation();
 }
 
 export async function clearCartCSR(): Promise<CartData> {
-  const data = await apiFetch<ApiResponse<CartData> | CartData>(
-    `${USERS_PROXY_BASE}/cart`,
-    {
-      method: "DELETE",
-    }
-  );
+  await apiFetch<ApiResponse<CartData> | CartData>(`${USERS_PROXY_BASE}/cart`, {
+    method: "DELETE",
+  });
 
-  const normalized = normalizeCartPayload(data);
-  cartSnapshot = {
-    value: normalized,
-    expiresAt: Date.now() + REQUEST_DEDUPE_TTL_MS,
-  };
-  return normalized;
+  return refreshCartAfterMutation();
 }
 
 export async function getWishlistCSR(): Promise<WishlistResult> {

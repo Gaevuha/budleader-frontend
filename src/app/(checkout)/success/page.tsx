@@ -1,6 +1,16 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 
 import { Container } from "@/components/layout/Container/Container";
+
+export const metadata: Metadata = {
+  title: "Замовлення прийнято",
+  description: "Підтвердження успішного оформлення замовлення в Будлідер.",
+  robots: {
+    index: false,
+    follow: false,
+  },
+};
 
 export default function CheckoutSuccessPage() {
   return (
