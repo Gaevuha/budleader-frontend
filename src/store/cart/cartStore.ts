@@ -1,4 +1,4 @@
-import { create } from "zustand";
+import { create, type StoreApi } from "zustand";
 
 import { mapApiProductToAppProduct } from "@/services/api";
 import {
@@ -119,7 +119,7 @@ const mapServerCartToStoreItems = (serverCart: CartData): CartItem[] => {
 };
 
 const setCartState = (
-  set: (partial: Partial<CartStore>) => void,
+  set: StoreApi<CartStore>["setState"],
   items: CartItem[]
 ) => {
   set({
@@ -129,7 +129,7 @@ const setCartState = (
 };
 
 const addPendingProductId = (
-  set: (partial: Partial<CartStore>) => void,
+  set: StoreApi<CartStore>["setState"],
   productId: string
 ) => {
   set((state) => ({
@@ -140,7 +140,7 @@ const addPendingProductId = (
 };
 
 const removePendingProductId = (
-  set: (partial: Partial<CartStore>) => void,
+  set: StoreApi<CartStore>["setState"],
   productId: string
 ) => {
   set((state) => ({

@@ -413,7 +413,12 @@ const normalizeCartPayload = (payload: unknown): CartData => {
     return Number.isFinite(parsed) ? parsed : fallback;
   };
 
-  const normalizeCartItem = (item: Record<string, unknown>) => {
+  const normalizeCartItem = (input: unknown) => {
+    const item =
+      input && typeof input === "object"
+        ? (input as Record<string, unknown>)
+        : {};
+
     const productObj =
       item.product && typeof item.product === "object"
         ? (item.product as Record<string, unknown>)
@@ -477,9 +482,7 @@ const normalizeCartPayload = (payload: unknown): CartData => {
         : null;
 
     if (nested && Array.isArray(nested.items)) {
-      const items = (nested.items as Array<Record<string, unknown>>).map(
-        normalizeCartItem
-      );
+      const items = (nested.items as unknown[]).map(normalizeCartItem);
       const subtotal =
         typeof nested.subtotal === "number" && Number.isFinite(nested.subtotal)
           ? nested.subtotal
@@ -502,9 +505,7 @@ const normalizeCartPayload = (payload: unknown): CartData => {
 
     // Backend cart mutations may return a plain cart array in data.
     if (Array.isArray(raw.data)) {
-      const items = (raw.data as Array<Record<string, unknown>>).map(
-        normalizeCartItem
-      );
+      const items = (raw.data as unknown[]).map(normalizeCartItem);
 
       const subtotal = items.reduce(
         (sum, item) => sum + item.price * item.quantity,
@@ -521,9 +522,7 @@ const normalizeCartPayload = (payload: unknown): CartData => {
     Array.isArray((candidate as CartData).items)
   ) {
     const rawCart = candidate as CartData;
-    const items = (rawCart.items as Array<Record<string, unknown>>).map(
-      normalizeCartItem
-    );
+    const items = (rawCart.items as unknown[]).map(normalizeCartItem);
 
     return {
       items,
