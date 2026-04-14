@@ -577,26 +577,6 @@ const toPathname = (url: string | undefined): string => {
   }
 };
 
-const isAbsoluteUrl = (url: string): boolean => {
-  return /^[a-z][a-z\d+\-.]*:\/\//i.test(url);
-};
-
-const buildProxyRequestUrl = (url: string | undefined): string | undefined => {
-  if (!url) {
-    return url;
-  }
-
-  if (
-    isAbsoluteUrl(url) ||
-    url.startsWith(API_PROXY_PREFIX) ||
-    url.startsWith(AUTH_ENDPOINT_PREFIX)
-  ) {
-    return url;
-  }
-
-  return `${API_PROXY_PREFIX}${url.startsWith("/") ? url : `/${url}`}`;
-};
-
 const isPublicEndpointPath = (path: string): boolean => {
   return path === "/api/categories" || path === "/api/products";
 };
@@ -894,13 +874,6 @@ api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
     getInFlight.set(key, requestPromise);
     return cloneResponse(await requestPromise);
   };
-
-  const proxyUrl = buildProxyRequestUrl(config.url);
-
-  if (proxyUrl && proxyUrl !== config.url) {
-    config.baseURL = undefined;
-    config.url = proxyUrl;
-  }
 
   return config;
 });
