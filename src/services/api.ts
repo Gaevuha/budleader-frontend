@@ -498,6 +498,7 @@ const normalizeCartPayload = (payload: unknown): CartData => {
   };
 };
 
+
 const isCartItemCandidate = (value: unknown): boolean => {
   if (!isRecord(value)) {
     return false;
@@ -531,7 +532,7 @@ const getStructuredCartItems = (payload: unknown): unknown[] | null => {
   }
 
   return null;
-};
+
 
 const hasCartPayload = (payload: unknown): boolean => {
   return getStructuredCartItems(payload) !== null;
@@ -1106,6 +1107,7 @@ export async function resetPasswordCSR(
   await apiClient.put(`${ENDPOINTS.AUTH}/reset-password/${token}`, payload);
 }
 
+
 export function getOAuthRedirectUrl(
   provider: "google" | "facebook",
   returnTo?: string
@@ -1121,6 +1123,7 @@ export function getOAuthRedirectUrl(
     ? `${ENDPOINTS.AUTH}/${provider}?${query}`
     : `${ENDPOINTS.AUTH}/${provider}`;
 }
+
 
 // Client-side cart and wishlist methods
 
