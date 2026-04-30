@@ -48,7 +48,7 @@
   }
 }
 .loader {
-  top: 150;
+  /* top: 150; */
   width: 115px;
   height: 32px;
 }

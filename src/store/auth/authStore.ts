@@ -2,7 +2,7 @@
 
 import { create } from "zustand";
 
-import { logout as logoutRequest } from "@/services/authService";
+import { logout as logoutRequest } from "@/services/api";
 import type { User } from "@/types/auth";
 
 interface AuthStore {

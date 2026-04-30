@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { BarChart2, Package, ShoppingCart, Users } from "lucide-react";
 
-import { apiFetch } from "@/services/api";
 import { apiClient } from "@/services/apiClient";
 import styles from "../users/Users.module.css";
 
@@ -74,7 +73,11 @@ const fetchAnalyticsSnapshot = async (): Promise<AnalyticsSnapshot> => {
 
   if (!analyticsRequest) {
     analyticsRequest = Promise.all([
-      apiFetch<{ orders?: unknown[] }>("/api/admin/orders?page=1&limit=100"),
+      apiClient
+        .get<{ orders?: unknown[] }>("/api/admin/orders", {
+          params: { page: 1, limit: 100 },
+        })
+        .then((response) => response.data),
       apiClient.get("/api/users", {
         params: { page: 1, limit: 1, _ts: Date.now() },
       }),

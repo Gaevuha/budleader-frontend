@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import { useId } from "react";
 
 import styles from "./Profile.module.css";
@@ -38,8 +39,14 @@ export function AvatarUploader({
     <div className={styles.avatarBlock}>
       <div className={styles.avatarPreview} aria-hidden="true">
         {avatarSrc ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={avatarSrc} alt="" className={styles.avatarImage} />
+          <Image
+            src={avatarSrc}
+            alt=""
+            width={88}
+            height={88}
+            className={styles.avatarImage}
+            unoptimized
+          />
         ) : (
           <span>{getInitials(displayName)}</span>
         )}

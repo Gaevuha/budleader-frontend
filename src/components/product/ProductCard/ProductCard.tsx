@@ -1,87 +1,70 @@
 "use client";
 
-import { useState } from "react";
+import dynamic from "next/dynamic";
+import { memo, type MouseEventHandler, type ReactEventHandler } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useQueryClient } from "@tanstack/react-query";
 import { ShoppingCart, Heart, Check, Star, Zap } from "lucide-react";
 import type { AppProduct } from "@/types/app";
 import styles from "./ProductCard.module.css";
-import { toast } from "@/components/UI/notifications/toast";
-import { PRODUCT_PLACEHOLDER_SRC } from "@/utils/media";
-import { useCartStore } from "@/store/cart/cartStore";
-import { useWishlistStore } from "@/store/wishlist/wishlistStore";
-import { toFiniteNumber } from "@/services/api";
-import { useAuthStore } from "@/store/auth/authStore";
-import { CART_QUERY_KEY } from "@/queries/cartQueries";
-import { WISHLIST_QUERY_KEY } from "@/queries/wishlistQueries";
-import { QuickOrderModal } from "@/components/UI/QuickOrderModal/QuickOrderModal";
+
+const QuickOrderModal = dynamic(
+  () =>
+    import("@/components/UI/QuickOrderModal/QuickOrderModal").then(
+      (module) => module.QuickOrderModal
+    ),
+  {
+    ssr: false,
+  }
+);
 
 const RATING_STAR_INDEXES = [0, 1, 2, 3, 4] as const;
+export const DEFAULT_GRID_IMAGE_SIZES =
+  "(min-width: 1440px) 331px, (min-width: 768px) calc((100vw - 66px) / 2), calc(100vw - 32px)";
+const LIST_IMAGE_SIZES =
+  "(min-width: 1440px) 140px, (min-width: 768px) 140px, 220px";
+const PRODUCT_CARD_IMAGE_QUALITY = 52;
+const PRIORITY_PRODUCT_CARD_IMAGE_QUALITY = 58;
 
-interface ProductCardProps {
+export interface ProductCardProps {
   product: AppProduct;
   viewMode?: "grid" | "list";
+  prioritizeImage?: boolean;
+  gridImageSizes?: string;
+  imageSrc: string;
+  ratingValue: number;
+  isWishlisted: boolean;
+  isInCart: boolean;
+  isWishlistDisabled: boolean;
+  isCartDisabled: boolean;
+  isQuickOrderDisabled: boolean;
+  isQuickOrderOpen: boolean;
+  onToggleWishlist: MouseEventHandler<HTMLButtonElement>;
+  onAddToCart: MouseEventHandler<HTMLButtonElement>;
+  onQuickOrder: MouseEventHandler<HTMLButtonElement>;
+  onQuickOrderClose: () => void;
+  onImageError: ReactEventHandler<HTMLImageElement>;
 }
 
-export const ProductCard = ({
+export const ProductCard = memo(function ProductCard({
   product,
   viewMode = "grid",
-}: ProductCardProps) => {
-  const queryClient = useQueryClient();
-  const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
-  const cartItems = useCartStore((state) => state.cart);
-  const addCartItem = useCartStore((state) => state.addToCart);
-  const removeCartItem = useCartStore((state) => state.removeFromCart);
-  const isCartProductPending = useCartStore((state) =>
-    state.pendingProductIds.includes(product.id)
-  );
-  const wishlistItems = useWishlistStore((state) => state.wishlist);
-  const toggleWishlistItem = useWishlistStore((state) => state.toggleWishlist);
-  const wishlistIsSyncing = useWishlistStore((state) => state.isSyncing);
-  const [isCartActionPending, setIsCartActionPending] = useState(false);
-  const [isWishlistActionPending, setIsWishlistActionPending] = useState(false);
-  const [optimisticInCart, setOptimisticInCart] = useState<boolean | null>(
-    null
-  );
-  const [isQuickOrderOpen, setIsQuickOrderOpen] = useState(false);
-  const [failedImageSrcMap, setFailedImageSrcMap] = useState<
-    Record<string, true>
-  >({});
-  const normalizedImageSrc = (product.image ?? "").trim();
-  const isKnownBrokenPlaceholder = normalizedImageSrc
-    .toLowerCase()
-    .includes("catalog-placeholder");
-  const resolvedImageSrc =
-    normalizedImageSrc.length > 0 && !isKnownBrokenPlaceholder
-      ? normalizedImageSrc
-      : PRODUCT_PLACEHOLDER_SRC;
-  const imageSrc = failedImageSrcMap[resolvedImageSrc]
-    ? PRODUCT_PLACEHOLDER_SRC
-    : resolvedImageSrc;
-
-  const isWishlistedUi = wishlistItems.some((item) => item.id === product.id);
-  const actualIsInCartUi = cartItems.some(
-    (item) => item.productId === product.id || item.id === product.id
-  );
-  const isInCartUi =
-    optimisticInCart !== null && optimisticInCart !== actualIsInCartUi
-      ? optimisticInCart
-      : actualIsInCartUi;
-  const ratingSource = product as AppProduct & {
-    averageRating?: unknown;
-    avgRating?: unknown;
-    ratingAvg?: unknown;
-    characteristics?: { rating?: unknown };
-  };
-  const rawRating =
-    toFiniteNumber(ratingSource.rating) ??
-    toFiniteNumber(ratingSource.averageRating) ??
-    toFiniteNumber(ratingSource.avgRating) ??
-    toFiniteNumber(ratingSource.ratingAvg) ??
-    toFiniteNumber(ratingSource.characteristics?.rating) ??
-    0;
-  const ratingValue = Math.max(0, Math.min(5, rawRating));
+  prioritizeImage = false,
+  gridImageSizes = DEFAULT_GRID_IMAGE_SIZES,
+  imageSrc,
+  ratingValue,
+  isWishlisted,
+  isInCart,
+  isWishlistDisabled,
+  isCartDisabled,
+  isQuickOrderDisabled,
+  isQuickOrderOpen,
+  onToggleWishlist,
+  onAddToCart,
+  onQuickOrder,
+  onQuickOrderClose,
+  onImageError,
+}: ProductCardProps) {
   const ratingFillPercent = `${(ratingValue / 5) * 100}%`;
   const hasStockCount = typeof product.stock === "number" && product.inStock;
   const productHref = `/product/${product.id}`;
@@ -89,85 +72,6 @@ export const ProductCard = ({
   const discount = product.oldPrice
     ? Math.round(((product.oldPrice - product.price) / product.oldPrice) * 100)
     : 0;
-
-  const handleAddToCart = async (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-
-    if (isCartActionPending || isCartProductPending) {
-      return;
-    }
-
-    const wasInCart = isInCartUi;
-    setOptimisticInCart(!wasInCart);
-    setIsCartActionPending(true);
-
-    try {
-      if (wasInCart) {
-        await removeCartItem(product.id);
-      } else {
-        await addCartItem(product as AppProduct, 1);
-      }
-
-      if (isAuthenticated) {
-        await queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
-      }
-
-      setOptimisticInCart(null);
-    } catch {
-      setOptimisticInCart(wasInCart);
-      toast.error("Не вдалося оновити кошик");
-      return;
-    } finally {
-      setIsCartActionPending(false);
-    }
-
-    toast.success(
-      wasInCart ? "Товар видалено з кошика" : "Товар додано до кошика!"
-    );
-  };
-
-  const handleToggleWishlist = async (
-    e: React.MouseEvent<HTMLButtonElement>
-  ) => {
-    e.preventDefault();
-
-    const wasWishlisted = isWishlistedUi;
-    setIsWishlistActionPending(true);
-
-    try {
-      await toggleWishlistItem(product as AppProduct);
-
-      if (isAuthenticated) {
-        await queryClient.invalidateQueries({ queryKey: WISHLIST_QUERY_KEY });
-      }
-    } catch {
-      toast.error("Не вдалося оновити список бажань");
-      return;
-    } finally {
-      setIsWishlistActionPending(false);
-    }
-
-    toast.success(wasWishlisted ? "Видалено з обраного" : "Додано до обраного");
-  };
-
-  const handleQuickOrder = async (e: React.MouseEvent<HTMLButtonElement>) => {
-    e.preventDefault();
-
-    if (isAuthenticated) {
-      try {
-        await addCartItem(product as AppProduct, 1);
-        await queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
-      } catch {
-        toast.error("Не вдалося додати товар у кошик");
-        return;
-      }
-
-      toast.success("Товар додано до кошика!");
-      return;
-    }
-
-    setIsQuickOrderOpen(true);
-  };
 
   if (viewMode === "list") {
     return (
@@ -197,20 +101,14 @@ export const ProductCard = ({
                   alt={product.name}
                   className={styles.listImage}
                   fill
-                  sizes="(max-width: 767px) 50vw, 140px"
-                  unoptimized
-                  onError={() => {
-                    setFailedImageSrcMap((prev) => {
-                      if (prev[resolvedImageSrc]) {
-                        return prev;
-                      }
-
-                      return {
-                        ...prev,
-                        [resolvedImageSrc]: true,
-                      };
-                    });
-                  }}
+                  sizes={LIST_IMAGE_SIZES}
+                  quality={
+                    prioritizeImage
+                      ? PRIORITY_PRODUCT_CARD_IMAGE_QUALITY
+                      : PRODUCT_CARD_IMAGE_QUALITY
+                  }
+                  loading="lazy"
+                  onError={onImageError}
                 />
               </Link>
             </div>
@@ -275,8 +173,8 @@ export const ProductCard = ({
               <button
                 type="button"
                 className={styles.listActionBtn}
-                onClick={handleQuickOrder}
-                disabled={!product.inStock}
+                onClick={onQuickOrder}
+                disabled={isQuickOrderDisabled}
                 title="Швидке замовлення"
                 aria-label="Швидке замовлення"
               >
@@ -285,33 +183,33 @@ export const ProductCard = ({
               <button
                 type="button"
                 className={`${styles.listActionBtn} ${
-                  isWishlistedUi ? styles.listActionActive : ""
+                  isWishlisted ? styles.listActionActive : ""
                 }`}
-                onClick={handleToggleWishlist}
-                disabled={isWishlistActionPending || wishlistIsSyncing}
+                onClick={onToggleWishlist}
+                disabled={isWishlistDisabled}
                 title="В обране"
                 aria-label="Додати в обране"
-                aria-pressed={isWishlistedUi}
+                aria-pressed={isWishlisted}
               >
                 <Heart
                   size={18}
-                  fill={isWishlistedUi ? "currentColor" : "none"}
+                  fill={isWishlisted ? "currentColor" : "none"}
                 />
               </button>
               <button
                 type="button"
                 className={`${styles.listActionBtn} ${
                   styles.listActionPrimary
-                } ${isInCartUi ? styles.listActionActive : ""}`}
-                onClick={handleAddToCart}
-                disabled={!product.inStock}
+                } ${isInCart ? styles.listActionActive : ""}`}
+                onClick={onAddToCart}
+                disabled={isCartDisabled}
                 title="Кошик"
                 aria-label="Додати в кошик"
-                aria-pressed={isInCartUi}
+                aria-pressed={isInCart}
               >
                 <ShoppingCart
                   size={18}
-                  fill={isInCartUi ? "currentColor" : "none"}
+                  fill={isInCart ? "currentColor" : "none"}
                 />
               </button>
             </div>
@@ -320,7 +218,7 @@ export const ProductCard = ({
 
         <QuickOrderModal
           isOpen={isQuickOrderOpen}
-          onClose={() => setIsQuickOrderOpen(false)}
+          onClose={onQuickOrderClose}
           product={product}
         />
       </>
@@ -351,41 +249,35 @@ export const ProductCard = ({
               alt={product.name}
               className={styles.image}
               fill
-              sizes="(max-width: 768px) 100vw, 25vw"
-              unoptimized
-              onError={() => {
-                setFailedImageSrcMap((prev) => {
-                  if (prev[resolvedImageSrc]) {
-                    return prev;
-                  }
-
-                  return {
-                    ...prev,
-                    [resolvedImageSrc]: true,
-                  };
-                });
-              }}
+              sizes={gridImageSizes}
+              quality={
+                prioritizeImage
+                  ? PRIORITY_PRODUCT_CARD_IMAGE_QUALITY
+                  : PRODUCT_CARD_IMAGE_QUALITY
+              }
+              loading="lazy"
+              onError={onImageError}
             />
           </Link>
 
           <button
             type="button"
             className={`${styles.wishlistBtn} ${
-              isWishlistedUi ? styles.wishlistActive : ""
+              isWishlisted ? styles.wishlistActive : ""
             }`}
-            onClick={handleToggleWishlist}
-            disabled={isWishlistActionPending || wishlistIsSyncing}
+            onClick={onToggleWishlist}
+            disabled={isWishlistDisabled}
             title="В обране"
-            aria-pressed={isWishlistedUi}
+            aria-pressed={isWishlisted}
           >
-            <Heart size={20} fill={isWishlistedUi ? "currentColor" : "none"} />
+            <Heart size={20} fill={isWishlisted ? "currentColor" : "none"} />
           </button>
 
           <button
             type="button"
             className={styles.quickOrderBtn}
-            onClick={handleQuickOrder}
-            disabled={!product.inStock}
+            onClick={onQuickOrder}
+            disabled={isQuickOrderDisabled}
             title="Швидке замовлення"
           >
             <Zap className={styles.buttonIcon} />
@@ -460,16 +352,16 @@ export const ProductCard = ({
             <button
               type="button"
               className={`${styles.cartBtn} ${
-                isInCartUi ? styles.cartActive : ""
+                isInCart ? styles.cartActive : ""
               }`}
-              onClick={handleAddToCart}
-              disabled={!product.inStock}
+              onClick={onAddToCart}
+              disabled={isCartDisabled}
               title="Купити"
-              aria-pressed={isInCartUi}
+              aria-pressed={isInCart}
             >
               <ShoppingCart
                 size={20}
-                fill={isInCartUi ? "currentColor" : "none"}
+                fill={isInCart ? "currentColor" : "none"}
               />
             </button>
           </div>
@@ -478,9 +370,9 @@ export const ProductCard = ({
 
       <QuickOrderModal
         isOpen={isQuickOrderOpen}
-        onClose={() => setIsQuickOrderOpen(false)}
+        onClose={onQuickOrderClose}
         product={product}
       />
     </>
   );
-};
+});

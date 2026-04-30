@@ -13,7 +13,6 @@ import {
 import { toast } from "@/components/UI/notifications/toast";
 
 import { Modal } from "@/components/UI/Modal/Modal";
-import { apiFetch } from "@/services/api";
 import { apiClient } from "@/services/apiClient";
 import type { AppOrder, AppOrderStatus } from "@/types/app";
 import styles from "./Orders.module.css";
@@ -591,14 +590,19 @@ const fetchAdminOrders = async (): Promise<AppOrder[]> => {
 
   if (!adminOrdersRequest) {
     adminOrdersRequest = Promise.all([
-      apiFetch<{
-        orders?: unknown[];
-        pagination?: unknown;
-      }>("/api/admin/orders"),
-      apiFetch<{
-        requests?: unknown[];
-        pagination?: unknown;
-      }>("/api/admin/service-requests").catch(() => ({ requests: [] })),
+      apiClient
+        .get<{
+          orders?: unknown[];
+          pagination?: unknown;
+        }>("/api/admin/orders")
+        .then((response) => response.data),
+      apiClient
+        .get<{
+          requests?: unknown[];
+          pagination?: unknown;
+        }>("/api/admin/service-requests")
+        .then((response) => response.data)
+        .catch(() => ({ requests: [] })),
     ])
       .then(([ordersResponse, serviceRequestsResponse]) => {
         const normalizedOrders = extractOrdersFromPayload(ordersResponse)
@@ -673,24 +677,25 @@ export const Orders = () => {
     return isServiceOrder(order)
       ? normalizeServiceRequest(
           extractSingleOrder(
-            await apiFetch(`/api/admin/service-requests/${order.id}`, {
-              method: "PATCH",
-              body: {
+            (
+              await apiClient.patch(`/api/admin/service-requests/${order.id}`, {
                 status,
                 comment,
-              },
-            })
+              })
+            ).data
           )
         )
       : normalizeOrder(
           extractSingleOrder(
-            await apiFetch(`/api/proxy/api/orders/admin/${order.id}/status`, {
-              method: "PUT",
-              body: {
-                status,
-                comment,
-              },
-            })
+            (
+              await apiClient.put(
+                `/api/proxy/api/orders/admin/${order.id}/status`,
+                {
+                  status,
+                  comment,
+                }
+              )
+            ).data
           )
         );
   };
@@ -705,7 +710,11 @@ export const Orders = () => {
       }
 
       const product = normalizeRestockableProduct(
-        await apiFetch(`/api/proxy/api/products/${productId}?_ts=${Date.now()}`)
+        (
+          await apiClient.get(`/api/proxy/api/products/${productId}`, {
+            params: { _ts: Date.now() },
+          })
+        ).data
       );
 
       if (!product) {
@@ -714,11 +723,10 @@ export const Orders = () => {
         );
       }
 
-      await apiFetch(`/api/proxy/api/products/${productId}`, {
-        method: "PUT",
-        body: buildProductRestockFormData(product, product.stock + quantity),
-        retryOn401: false,
-      });
+      await apiClient.put(
+        `/api/proxy/api/products/${productId}`,
+        buildProductRestockFormData(product, product.stock + quantity)
+      );
     }
   };
 
@@ -733,7 +741,8 @@ export const Orders = () => {
       const normalizedOrder = isServiceOrder(order)
         ? normalizeServiceRequest(
             extractSingleOrder(
-              await apiFetch(`/api/admin/service-requests/${order.id}`)
+              (await apiClient.get(`/api/admin/service-requests/${order.id}`))
+                .data
             )
           )
         : normalizeOrder(
@@ -891,9 +900,7 @@ export const Orders = () => {
       const orderToDelete = orders.find((item) => item.id === orderId);
 
       if (orderToDelete && isServiceOrder(orderToDelete)) {
-        await apiFetch(`/api/admin/service-requests/${orderId}`, {
-          method: "DELETE",
-        });
+        await apiClient.delete(`/api/admin/service-requests/${orderId}`);
       } else {
         await apiClient.delete(`/api/orders/${orderId}`);
       }

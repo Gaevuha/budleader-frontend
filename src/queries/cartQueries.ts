@@ -12,7 +12,7 @@ import {
   clearCartCSR,
   getCartCSR,
   removeFromCartCSR,
-} from "@/services/apiClient";
+} from "@/services/api";
 import type { CartData } from "@/types/cart";
 
 export const CART_QUERY_KEY = ["cart"] as const;

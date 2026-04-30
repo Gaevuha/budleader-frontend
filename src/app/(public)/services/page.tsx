@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import {
   Construction,
   MapPinned,
@@ -473,22 +474,22 @@ function ServicesPage() {
                   {publicSupportSettings.contactPhone}.
                 </p>
                 <div className={styles.consultationActions}>
-                  <a href={supportPhoneHref} className="brand-button">
+                  <Link href={supportPhoneHref} className="brand-button">
                     Зателефонувати
-                  </a>
-                  <a href="/contacts" className="brand-button-secondary">
+                  </Link>
+                  <Link href="/contacts" className="brand-button-secondary">
                     Контакти та адреси
-                  </a>
+                  </Link>
                 </div>
                 <div className={styles.consultationQuickLinks}>
                   {helpQuickLinks.slice(0, 2).map((link) => (
-                    <a
+                    <Link
                       key={link.id}
                       href={link.href}
                       className={styles.consultationQuickLink}
                     >
                       {link.label}
-                    </a>
+                    </Link>
                   ))}
                 </div>
               </div>

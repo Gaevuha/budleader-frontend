@@ -449,6 +449,8 @@
 }
 
 .count {
+  display: inline-block;
+  min-width: 7ch;
   color: var(--catalog-text-muted);
   font-size: 14px;
   font-weight: 500;
@@ -524,7 +526,7 @@
 }
 
 .viewToggle {
-  display: flex;
+  display: none;
   align-items: center;
   gap: 8px;
   padding: 4px;
@@ -644,13 +646,65 @@
   align-items: center;
   justify-content: center;
   min-height: 320px;
+}
+
+.skeletonWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-height: 320px;
+}
+
+.skeletonToolbar,
+.skeletonCard,
+.loadMoreSkeleton {
+  position: relative;
+  overflow: hidden;
   background: color-mix(
     in srgb,
-    var(--catalog-surface-strong) 84%,
-    transparent
+    var(--catalog-surface-strong) 82%,
+    #e2e8f0 18%
   );
-  border: 1px solid rgba(226, 232, 240, 0.9);
-  border-radius: 24px;
+}
+
+.skeletonToolbar::after,
+.skeletonCard::after,
+.loadMoreSkeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.38) 48%,
+    transparent 100%
+  );
+  animation: skeletonShimmer 1.4s ease-in-out infinite;
+}
+
+.skeletonToolbar {
+  height: 94px;
+  border-radius: 20px;
+  border: 1px solid var(--catalog-border);
+}
+
+.skeletonGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.skeletonCard {
+  min-height: 272px;
+  border-radius: 22px;
+  border: 1px solid var(--catalog-border);
+}
+
+@keyframes skeletonShimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 .loadMoreWrap {
@@ -701,6 +755,13 @@
   justify-content: center;
   width: 158px;
   height: 48px;
+}
+
+.loadMoreSkeleton {
+  width: 158px;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid var(--catalog-border);
 }
 
 .loadMoreLoader {
@@ -837,6 +898,10 @@
     gap: 20px;
   }
 
+  .skeletonGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .pagination {
     justify-content: center;
     flex-wrap: wrap;
@@ -877,8 +942,20 @@
     display: none;
   }
 
+  .applyBtn {
+    display: none;
+  }
+
+  .viewToggle {
+    display: flex;
+  }
+
   .grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 24px;
+  }
+
+  .skeletonGrid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
   }
 }

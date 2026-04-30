@@ -5,7 +5,8 @@ import { Settings, Save } from "lucide-react";
 
 import { Button } from "@/components/UI/Button/Button";
 import { FormInput } from "@/components/UI/FormInput/FormInput";
-import { apiFetch, getApiErrorMessage } from "@/services/api";
+import { getApiErrorMessage } from "@/services/api";
+import { apiClient } from "@/services/apiClient";
 import {
   parseHelpQuickLinks,
   parseWorkSchedule,
@@ -70,9 +71,9 @@ const fetchAdminSettings = async (): Promise<AdminSettings> => {
   }
 
   if (!settingsRequest) {
-    settingsRequest = apiFetch<AdminSettings>("/api/admin/settings", {
-      retryOn401: false,
-    })
+    settingsRequest = apiClient
+      .get<AdminSettings>("/api/admin/settings")
+      .then((response) => response.data)
       .then((payload) => {
         settingsSnapshot = { ...DEFAULT_SETTINGS, ...payload };
         return settingsSnapshot;
@@ -124,14 +125,13 @@ export const SettingsPage = () => {
     setIsSaving(true);
 
     try {
-      const payload = await apiFetch<AdminSettings>("/api/admin/settings", {
-        method: "PUT",
-        body: {
+      const payload = (
+        await apiClient.put<AdminSettings>("/api/admin/settings", {
           ...settings,
           workSchedule: parseWorkSchedule(workScheduleInput),
           helpQuickLinks: parseHelpQuickLinks(helpQuickLinksInput),
-        },
-      });
+        })
+      ).data;
 
       settingsSnapshot = payload;
       setSettings(payload);

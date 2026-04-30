@@ -72,7 +72,15 @@ export function Hero() {
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.6, duration: 0.3 }}
           >
-            <Link href={slides[currentSlide].link} className={styles.cta}>
+            <Link
+              href={slides[currentSlide].link}
+              prefetch={
+                slides[currentSlide].link.startsWith("/catalog")
+                  ? false
+                  : undefined
+              }
+              className={styles.cta}
+            >
               <span>{slides[currentSlide].cta}</span>
               <ArrowRight className={styles.ctaIcon} />
             </Link>

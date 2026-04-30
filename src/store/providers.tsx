@@ -9,7 +9,6 @@ import {
 } from "@tanstack/react-query";
 
 import { USER_QUERY_KEY } from "@/queries/authQueries";
-import { resetCommerceRequestCache } from "@/services/apiClient";
 import {
   type AuthBroadcastEvent,
   createAuthBroadcastChannel,
@@ -191,7 +190,6 @@ function AppBootstrap({
 
       await mergeGuestWishlist(safeServerWishlist);
 
-      resetCommerceRequestCache();
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY }),
         queryClient.invalidateQueries({ queryKey: WISHLIST_QUERY_KEY }),

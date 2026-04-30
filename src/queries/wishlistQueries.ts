@@ -6,7 +6,7 @@ import {
   addToWishlistCSR,
   getWishlistCSR,
   removeFromWishlistCSR,
-} from "@/services/apiClient";
+} from "@/services/api";
 
 export const WISHLIST_QUERY_KEY = ["wishlist"] as const;
 

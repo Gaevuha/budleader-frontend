@@ -1,6 +1,6 @@
 "use client";
 
-import { ProductCard } from "@/components/product/ProductCard/ProductCard";
+import { ConnectedProductCard } from "@/components/product/ProductCard/ConnectedProductCard";
 import type { AppProduct } from "@/types/app";
 import styles from "@/components/catalog/Catalog.module.css";
 
@@ -12,11 +12,16 @@ interface ProductListProps {
 
 const renderProductListItem = (
   product: AppProduct,
-  viewMode: ProductListProps["viewMode"]
+  viewMode: ProductListProps["viewMode"],
+  prioritizeImage: boolean
 ) => {
   return (
     <li key={product.id} className={styles.productListItem}>
-      <ProductCard product={product} viewMode={viewMode} />
+      <ConnectedProductCard
+        product={product}
+        viewMode={viewMode}
+        prioritizeImage={prioritizeImage}
+      />
     </li>
   );
 };
@@ -44,7 +49,9 @@ export function ProductList({
 
   return (
     <ul className={viewMode === "grid" ? styles.grid : styles.list}>
-      {products.map((product) => renderProductListItem(product, viewMode))}
+      {products.map((product, index) =>
+        renderProductListItem(product, viewMode, index === 0)
+      )}
     </ul>
   );
 }

@@ -5,7 +5,7 @@ import { X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
 import { toast } from "../notifications/toast";
 
-import { createQuickOrderCSR } from "@/services/apiClient";
+import { createQuickOrderCSR } from "@/services/api";
 import type { AppProduct } from "@/types/app";
 import styles from "./QuickOrderModal.module.css";
 

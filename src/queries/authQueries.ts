@@ -3,19 +3,17 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AUTH_QUERY_KEY, useAuth } from "@/hooks/useAuth";
-import { logout } from "@/services/authService";
 import { publishAuthEvent } from "@/services/authBroadcast";
 import {
   changePasswordCSR,
   forgotPasswordCSR,
   loginCSR,
+  logout,
   logoutAllCSR,
-  resetCommerceRequestCache,
-  resetCurrentUserRequestCache,
   registerCSR,
   resetPasswordCSR,
   updateProfileCSR,
-} from "@/services/apiClient";
+} from "@/services/api";
 import { useAuthStore } from "@/store/auth/authStore";
 import type {
   ChangePasswordPayload,
@@ -43,8 +41,6 @@ export function useLogin() {
   return useMutation({
     mutationFn: (payload: LoginPayload) => loginCSR(payload),
     onSuccess: async (data) => {
-      resetCurrentUserRequestCache();
-      resetCommerceRequestCache();
       useAuthStore.getState().login(data.user);
       queryClient.setQueryData(USER_QUERY_KEY, data.user);
       publishAuthEvent("login");
@@ -58,8 +54,6 @@ export function useRegister() {
   return useMutation({
     mutationFn: (payload: RegisterPayload) => registerCSR(payload),
     onSuccess: async (data) => {
-      resetCurrentUserRequestCache();
-      resetCommerceRequestCache();
       useAuthStore.getState().login(data.user);
       queryClient.setQueryData(USER_QUERY_KEY, data.user);
       publishAuthEvent("register");
@@ -73,8 +67,6 @@ export function useLogout() {
   return useMutation({
     mutationFn: logout,
     onSuccess: async () => {
-      resetCurrentUserRequestCache();
-      resetCommerceRequestCache();
       useAuthStore.getState().clear();
       publishAuthEvent("logout");
       await queryClient.cancelQueries();
@@ -89,8 +81,6 @@ export function useLogoutAll() {
   return useMutation({
     mutationFn: logoutAllCSR,
     onSuccess: async () => {
-      resetCurrentUserRequestCache();
-      resetCommerceRequestCache();
       useAuthStore.getState().clear();
       publishAuthEvent("logout-all");
       await queryClient.cancelQueries();
@@ -111,7 +101,6 @@ export function useUpdateProfile() {
   return useMutation({
     mutationFn: (payload: UpdateProfilePayload) => updateProfileCSR(payload),
     onSuccess: async (user) => {
-      resetCurrentUserRequestCache();
       queryClient.setQueryData(USER_QUERY_KEY, user);
       await queryClient.invalidateQueries({ queryKey: USER_QUERY_KEY });
     },
