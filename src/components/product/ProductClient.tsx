@@ -12,12 +12,13 @@ import type { Product } from "@/types/product";
 import { PRODUCT_PLACEHOLDER_SRC } from "@/utils/media";
 import { Container } from "@/components/layout/Container/Container";
 import styles from "@/components/product/ProductClient.module.css";
-import { submitProductReviewCSR } from "@/services/apiClient";
-import { mapApiProductToAppProduct } from "@/services/api";
+import {
+  mapApiProductToAppProduct,
+  submitProductReviewCSR,
+} from "@/services/api";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { useUser } from "@/queries/authQueries";
-import { CART_QUERY_KEY } from "@/queries/cartQueries";
 import { WISHLIST_QUERY_KEY } from "@/queries/wishlistQueries";
 import {
   productReviewsQueryKey,
@@ -126,10 +127,6 @@ export function ProductClient({ product }: ProductClientProps) {
         await removeCartItem(appProduct.id);
       } else {
         await addCartItem(appProduct, 1);
-      }
-
-      if (isAuthenticated) {
-        await queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY });
       }
 
       setOptimisticInCart(null);

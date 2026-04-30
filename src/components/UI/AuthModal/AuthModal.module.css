@@ -180,16 +180,27 @@
 
 .oauthButton {
   border: 1px solid var(--border);
-  background: var(--background);
+  background: linear-gradient(
+    180deg,
+    var(--oauth-accent-soft, transparent) 0%,
+    var(--background) 100%
+  );
   color: var(--foreground);
   padding: 12px;
   border-radius: var(--radius);
   font-weight: 600;
   cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 52px;
+  transition: border-color 0.2s ease, transform 0.2s ease, box-shadow 0.2s ease;
 }
 
 .oauthButton:hover {
-  border-color: var(--primary);
+  border-color: var(--oauth-accent-border, var(--primary));
+  box-shadow: 0 10px 24px -18px var(--oauth-accent, var(--primary));
+  transform: translateY(-1px);
 }
 
 .switchMode {

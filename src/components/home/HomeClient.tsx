@@ -1,92 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import Link from "next/link";
-import {
-  ArrowRight,
-  Bike,
-  CreditCard,
-  Droplets,
-  DoorOpen,
-  Hammer,
-  HardHat,
-  Headphones,
-  LayoutGrid,
-  Lightbulb,
-  Monitor,
-  ShieldCheck,
-  Shirt,
-  Snowflake,
-  Sprout,
-  Tent,
-  Truck,
-  Utensils,
-  Bath,
-  Baby,
-  ChevronsDown,
-  ChevronRight,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { useState } from "react";
+import { CreditCard, Headphones, ShieldCheck, Truck } from "lucide-react";
 
 import { Container } from "@/components/layout/Container/Container";
-import { ProductCard } from "@/components/product/ProductCard/ProductCard";
 import type { AppProduct } from "@/types/app";
 import type { Category } from "@/types/category";
-import type { CategorySubcategoryLink } from "@/types/category";
 import type { FeatureItem } from "@/types/content";
 import styles from "@/app/page.module.css";
 import { Hero } from "../hero/Hero";
+import { CategoriesList } from "./CategoriesList";
 
 interface HomeClientProps {
   initialCategories: Category[];
-  initialProducts: AppProduct[];
+  initialPopularProducts: AppProduct[];
 }
-
-interface CategoryProductLink {
-  id: string;
-  name: string;
-}
-
-const renderHomeProductItem = (product: AppProduct) => {
-  return (
-    <li key={product.id} className={styles.productGridItem}>
-      <ProductCard product={product} />
-    </li>
-  );
-};
-
-const toSubcategoryItem = (
-  item: string | CategorySubcategoryLink
-): { label: string; id: string | null } => {
-  if (typeof item === "string") {
-    return {
-      label: item,
-      id: null,
-    };
-  }
-
-  return {
-    label: item.name ?? item.title ?? "Підкатегорія",
-    id: item.id ?? item._id ?? null,
-  };
-};
-
-const categoryIconRules: Array<{ icon: LucideIcon; keywords: string[] }> = [
-  { icon: Droplets, keywords: ["водопост", "опален", "каналіз", "сантех"] },
-  { icon: Bath, keywords: ["ванн"] },
-  { icon: Monitor, keywords: ["побут", "технік", "електро"] },
-  { icon: Utensils, keywords: ["посуд", "кухн"] },
-  { icon: Sprout, keywords: ["сад", "город", "рослин", "насін"] },
-  { icon: Hammer, keywords: ["інструмент", "витрат", "ремонт"] },
-  { icon: Bike, keywords: ["вело"] },
-  { icon: DoorOpen, keywords: ["двер", "фурнітур"] },
-  { icon: HardHat, keywords: ["будів"] },
-  { icon: Lightbulb, keywords: ["світл", "ламп"] },
-  { icon: Snowflake, keywords: ["зим", "новоріч"] },
-  { icon: Shirt, keywords: ["текстил", "одяг", "взут"] },
-  { icon: Tent, keywords: ["відпоч", "туризм", "кемп"] },
-  { icon: Baby, keywords: ["діт", "дит"] },
-];
 
 const featureIcons = [Truck, ShieldCheck, CreditCard, Headphones];
 
@@ -113,97 +41,14 @@ const fallbackFeatures: FeatureItem[] = [
   },
 ];
 
-const pickCategoryIcon = (name: string): LucideIcon => {
-  const normalized = name.toLowerCase();
-
-  for (const rule of categoryIconRules) {
-    if (rule.keywords.some((keyword) => normalized.includes(keyword))) {
-      return rule.icon;
-    }
-  }
-
-  return LayoutGrid;
-};
-
 const pickIcon = <T,>(icons: T[], index: number): T =>
   icons[index % icons.length];
 
 export function HomeClient({
   initialCategories,
-  initialProducts,
+  initialPopularProducts,
 }: HomeClientProps) {
   const [isCatalogExpanded, setIsCatalogExpanded] = useState(false);
-  const collapsedCategoryCount = 14;
-
-  const categories = initialCategories;
-  const products = initialProducts;
-  const features = fallbackFeatures;
-
-  const visibleCategories = isCatalogExpanded
-    ? categories
-    : categories.slice(0, collapsedCategoryCount);
-
-  const newProducts = useMemo(() => {
-    const flagged = products.filter((p) => p.isNew).slice(0, 4);
-    if (flagged.length > 0) {
-      return flagged;
-    }
-
-    return [...products]
-      .sort((a, b) => {
-        const aTime = Date.parse((a as { createdAt?: string }).createdAt ?? "");
-        const bTime = Date.parse((b as { createdAt?: string }).createdAt ?? "");
-
-        return (
-          (Number.isNaN(bTime) ? 0 : bTime) - (Number.isNaN(aTime) ? 0 : aTime)
-        );
-      })
-      .slice(0, 4);
-  }, [products]);
-
-  const saleProducts = useMemo(
-    () => products.filter((p) => p.isSale || p.oldPrice).slice(0, 4),
-    [products]
-  );
-
-  const popularProducts = useMemo(() => products.slice(0, 4), [products]);
-  const lastSectionClassName = styles.lastSection;
-
-  const fallbackSubmenuByCategory = useMemo(() => {
-    const byCategoryId: Record<string, CategoryProductLink[]> = {};
-
-    categories.forEach((category) => {
-      const target = [category.id, category.slug, category.name]
-        .filter((value): value is string => Boolean(value))
-        .map((value) => value.toLowerCase());
-
-      const names = products
-        .filter((product) => {
-          const productCategory = [
-            product.category,
-            product.categoryName,
-            (product as { category?: { name?: string } }).category?.name,
-          ]
-            .filter((value): value is string => Boolean(value))
-            .map((value) => value.toLowerCase());
-
-          return productCategory.some((value) => target.includes(value));
-        })
-        .map((product) => ({
-          id: product.id,
-          name: product.name,
-        }))
-        .filter(
-          (item, index, arr) =>
-            arr.findIndex((entry) => entry.id === item.id) === index
-        )
-        .slice(0, 18);
-
-      byCategoryId[category.id] = names;
-    });
-
-    return byCategoryId;
-  }, [categories, products]);
 
   return (
     <>
@@ -211,133 +56,16 @@ export function HomeClient({
         <Container>
           <div className={styles.heroGrid}>
             <div className={styles.catalogContainer}>
-              <aside
-                className={`${styles.catalogSidebar} ${
-                  isCatalogExpanded ? styles.expanded : ""
-                }`}
+              <div
                 onMouseEnter={() => setIsCatalogExpanded(true)}
                 onMouseLeave={() => setIsCatalogExpanded(false)}
               >
-                <div className={styles.catalogHeader}>
-                  <LayoutGrid size={20} />
-                  <span>Каталог товарів</span>
-                </div>
-                <div className={styles.catalogListWrapper}>
-                  <ul className={styles.catalogList}>
-                    {visibleCategories.map((category) => {
-                      const Icon = pickCategoryIcon(category.name);
-                      const categoryHref = `/catalog?category=${encodeURIComponent(
-                        category.id
-                      )}`;
-                      const fallbackLinks =
-                        fallbackSubmenuByCategory[category.id] ?? [];
-                      const hasSubcategories =
-                        Array.isArray(category.subcategories) &&
-                        category.subcategories.length > 0;
-
-                      return (
-                        <li key={category.id} className={styles.catalogItem}>
-                          <Link
-                            href={categoryHref}
-                            className={styles.catalogLink}
-                          >
-                            <Icon
-                              size={20}
-                              className={styles.catalogLinkIcon}
-                              strokeWidth={1.5}
-                            />
-                            <span className={styles.catalogLinkText}>
-                              {category.name}
-                            </span>
-                            <ChevronRight
-                              size={16}
-                              className={styles.catalogArrow}
-                            />
-                          </Link>
-
-                          <div className={styles.submenu}>
-                            {hasSubcategories ? (
-                              category.subcategories!.map(
-                                (group, groupIndex) => (
-                                  <div
-                                    key={`${group.name}-${groupIndex}`}
-                                    className={styles.submenuGroup}
-                                  >
-                                    <h4>
-                                      <Link href={categoryHref}>
-                                        {group.name}
-                                      </Link>
-                                    </h4>
-                                    <ul className={styles.submenuList}>
-                                      {(group.links ?? []).map(
-                                        (rawItem, itemIndex) => {
-                                          const item =
-                                            toSubcategoryItem(rawItem);
-                                          const href = `/catalog?category=${encodeURIComponent(
-                                            item.id ?? category.id
-                                          )}`;
-
-                                          return (
-                                            <li
-                                              key={`${item.label}-${itemIndex}`}
-                                            >
-                                              <Link href={href}>
-                                                {item.label}
-                                              </Link>
-                                            </li>
-                                          );
-                                        }
-                                      )}
-                                    </ul>
-                                  </div>
-                                )
-                              )
-                            ) : (
-                              <div className={styles.submenuGroup}>
-                                <h4>
-                                  <Link href={categoryHref}>
-                                    {category.name}
-                                  </Link>
-                                </h4>
-                                {fallbackLinks.length > 0 ? (
-                                  <ul className={styles.submenuList}>
-                                    {fallbackLinks.map((item) => (
-                                      <li key={item.id}>
-                                        <Link
-                                          href={`/product/${encodeURIComponent(
-                                            item.id
-                                          )}`}
-                                        >
-                                          {item.name}
-                                        </Link>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                ) : (
-                                  <ul className={styles.submenuList}>
-                                    <li>
-                                      <Link href={categoryHref}>
-                                        Дивитися товари категорії
-                                      </Link>
-                                    </li>
-                                  </ul>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        </li>
-                      );
-                    })}
-                  </ul>
-
-                  {!isCatalogExpanded &&
-                  categories.length > collapsedCategoryCount ? (
-                    <div className={styles.catalogMoreIndicator} aria-hidden>
-                      <ChevronsDown size={16} />
-                    </div>
-                  ) : null}
-                </div>
-              </aside>
+                <CategoriesList
+                  categories={initialCategories}
+                  products={initialPopularProducts}
+                  isExpanded={isCatalogExpanded}
+                />
+              </div>
             </div>
 
             <div className={styles.heroBannerWrapper}>
@@ -347,19 +75,11 @@ export function HomeClient({
         </Container>
       </section>
 
-      <section
-        className={`${styles.features} ${
-          newProducts.length === 0 &&
-          saleProducts.length === 0 &&
-          popularProducts.length === 0
-            ? lastSectionClassName
-            : ""
-        }`}
-      >
+      <section className={`${styles.features} ${styles.lastSection}`}>
         <Container>
           <ul className={styles.featuresGrid}>
-            {features.map((feature, idx) => {
-              const Icon = pickIcon(featureIcons, idx);
+            {fallbackFeatures.map((feature, index) => {
+              const Icon = pickIcon(featureIcons, index);
 
               return (
                 <li key={feature.id} className={styles.featureGridItem}>
@@ -378,67 +98,6 @@ export function HomeClient({
           </ul>
         </Container>
       </section>
-
-      {newProducts.length > 0 && (
-        <section
-          className={`${styles.productsSection} ${
-            saleProducts.length === 0 && popularProducts.length === 0
-              ? lastSectionClassName
-              : ""
-          }`}
-        >
-          <Container>
-            <div className={styles.sectionHeader}>
-              <h2 className={styles.sectionTitle}>Новинки</h2>
-              <Link href="/catalog?isNew=true" className={styles.viewAll}>
-                Всі новинки <ArrowRight size={16} />
-              </Link>
-            </div>
-            <ul className={styles.productGrid}>
-              {newProducts.map(renderHomeProductItem)}
-            </ul>
-          </Container>
-        </section>
-      )}
-
-      {saleProducts.length > 0 && (
-        <section
-          id="all-sales"
-          className={`${styles.productsSection} ${
-            popularProducts.length === 0 ? lastSectionClassName : ""
-          }`}
-        >
-          <Container>
-            <div className={styles.sectionHeader}>
-              <h2 className={styles.sectionTitle}>Акції</h2>
-              <Link href="/catalog?isSale=true" className={styles.viewAll}>
-                Всі акції <ArrowRight size={16} />
-              </Link>
-            </div>
-            <ul className={styles.productGrid}>
-              {saleProducts.map(renderHomeProductItem)}
-            </ul>
-          </Container>
-        </section>
-      )}
-
-      {popularProducts.length > 0 && (
-        <section
-          className={`${styles.productsSection} ${lastSectionClassName}`}
-        >
-          <Container>
-            <div className={styles.sectionHeader}>
-              <h2 className={styles.sectionTitle}>Популярні товари</h2>
-              <Link href="/catalog" className={styles.viewAll}>
-                Дивитись всі <ArrowRight size={16} />
-              </Link>
-            </div>
-            <ul className={styles.productGrid}>
-              {popularProducts.map(renderHomeProductItem)}
-            </ul>
-          </Container>
-        </section>
-      )}
     </>
   );
 }

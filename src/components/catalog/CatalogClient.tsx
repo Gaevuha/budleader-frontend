@@ -1,204 +1,270 @@
 "use client";
 
-import {
-  startTransition,
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
-import {
-  keepPreviousData,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { Funnel } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import ReactPaginate from "react-paginate";
+import { Funnel } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 
 import { Container } from "@/components/layout/Container/Container";
 import Loader from "@/components/UI/Loader/Loader";
-import { CatalogFilters } from "./CatalogFilters";
-import { CatalogToolbar } from "./CatalogToolbar";
-import { ProductList } from "./ProductList";
-import type { AppProduct, CatalogViewMode } from "@/types/app";
-import type { Pagination } from "@/types/api";
-import type { Category } from "@/types/category";
-import type { CategorySubcategoryLink } from "@/types/category";
-import type { Product } from "@/types/product";
-import { mapApiProductToAppProduct } from "@/services/api";
-import { updateCatalogViewPreferenceCSR } from "@/services/catalogViewClient";
-import { getProductsCSR } from "@/services/apiClient";
+import { toast } from "@/components/UI/notifications/toast";
+import { useBreakpoint } from "@/hooks/useBreakpoint";
+import { useDebounce } from "@/hooks/useDebounce";
+import { USER_QUERY_KEY, useUser } from "@/queries/authQueries";
+import {
+  getApiErrorMessage,
+  getProductsCSR,
+  updateCatalogViewPreferenceCSR,
+} from "@/services/api";
 import {
   DEFAULT_CATALOG_VIEW_MODE,
   persistCatalogViewMode,
   readStoredCatalogViewMode,
 } from "@/services/catalogViewPreference";
-import { useDebounce } from "@/hooks/useDebounce";
-import { useBreakpoint } from "@/hooks/useBreakpoint";
-import { toast } from "@/components/UI/notifications/toast";
-import { USER_QUERY_KEY, useUser } from "@/queries/authQueries";
+import type { AppProduct, CatalogViewMode } from "@/types/app";
+import type { Pagination } from "@/types/api";
 import type { User } from "@/types/auth";
-import styles from "@/components/catalog/Catalog.module.css";
+import type { Category, CategorySubcategoryLink } from "@/types/category";
+import styles from "./Catalog.module.css";
+import { Filters } from "./Filters";
+import { CatalogToolbar } from "./CatalogToolbar";
+import { ProductGrid } from "./ProductGrid";
+
+const CatalogPagination = dynamic(
+  () => import("./Pagination").then((module) => module.Pagination),
+  { ssr: false }
+);
+
+const MOBILE_CATALOG_PAGE_SIZE = 8;
 
 interface CatalogClientProps {
   categories: Category[];
-  initialProducts: Product[];
-  initialFilterProducts: Product[];
-  initialBrandCounts?: Record<string, number>;
-  initialPagination: Pagination | null;
-  initialCategory?: string;
-  initialBrands?: string[];
-  initialIsNew?: boolean;
-  initialIsSale?: boolean;
-  initialSearch?: string;
+  products: AppProduct[];
+  brands: string[];
+  brandCounts: Record<string, number>;
+  priceBounds: {
+    min: number | null;
+    max: number | null;
+  };
+  filterCounts: {
+    inStock: number;
+    isNew: number;
+    isSale: number;
+  };
+  pagination: Pagination | null;
+  currentPage: number;
+  selectedCategory?: string;
+  selectedBrands?: string[];
+  searchTerm?: string;
+  sortOrder?: string;
+  isNewOnly?: boolean;
+  isSaleOnly?: boolean;
+  minPrice?: string;
+  maxPrice?: string;
+  inStockOnly?: boolean;
 }
-
-interface PageChangeEvent {
-  selected: number;
-}
-
-const DESKTOP_PAGE_LIMIT = 12;
-const COMPACT_PAGE_LIMIT = 8;
 
 const normalizeToken = (value: string): string =>
   decodeURIComponent(value).trim().toLowerCase();
 
-const normalizeBrandLabel = (value: string): string => {
-  return value.trim().replace(/\s+/g, " ");
+const normalizeBrandLabel = (value: string): string =>
+  value.trim().replace(/\s+/g, " ");
+
+const normalizePriceParam = (value: string): string | null => {
+  const trimmed = value.trim();
+
+  if (!trimmed) {
+    return null;
+  }
+
+  const parsed = Number(trimmed);
+
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+
+  return trimmed;
 };
 
-const normalizeBrandKey = (value: string): string => {
-  return normalizeBrandLabel(value).toLocaleLowerCase("uk");
+const createSortParams = (sortOrder: string) => {
+  if (!sortOrder || sortOrder === "default") {
+    return { sort: null, order: null };
+  }
+
+  if (sortOrder === "rating-desc") {
+    return { sort: "rating-desc", order: null };
+  }
+
+  return { sort: sortOrder, order: null };
 };
 
-const normalizeSearchText = (value: string): string => {
-  return value.trim().toLocaleLowerCase("uk");
+const createApiSortParams = (sortOrder: string) => {
+  if (!sortOrder || sortOrder === "default") {
+    return { sort: undefined, order: undefined };
+  }
+
+  if (sortOrder === "rating-desc") {
+    return { sort: "rating", order: "desc" };
+  }
+
+  return { sort: sortOrder, order: undefined };
+};
+
+const mergeUniqueProducts = (
+  currentProducts: AppProduct[],
+  nextProducts: AppProduct[]
+) => {
+  const seenIds = new Set(currentProducts.map((product) => product.id));
+  const merged = [...currentProducts];
+
+  for (const product of nextProducts) {
+    if (!product.id || seenIds.has(product.id)) {
+      continue;
+    }
+
+    seenIds.add(product.id);
+    merged.push(product);
+  }
+
+  return merged;
 };
 
 export function CatalogClient({
   categories,
-  initialProducts,
-  initialFilterProducts,
-  initialBrandCounts,
-  initialPagination,
-  initialCategory = "",
-  initialBrands = [],
-  initialIsNew = false,
-  initialIsSale = false,
-  initialSearch = "",
+  products,
+  brands,
+  brandCounts,
+  priceBounds,
+  filterCounts,
+  pagination,
+  currentPage,
+  selectedCategory = "",
+  selectedBrands = [],
+  searchTerm = "",
+  sortOrder = "default",
+  isNewOnly = false,
+  isSaleOnly = false,
+  minPrice = "",
+  maxPrice = "",
+  inStockOnly = false,
 }: CatalogClientProps) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
+  const { isDesktop } = useBreakpoint();
   const { data: currentUser } = useUser();
-  const { isDesktop, isMobile, isTablet } = useBreakpoint();
-  const isCompactLayout = isMobile || isTablet;
-  const pageLimit = isCompactLayout ? COMPACT_PAGE_LIMIT : DESKTOP_PAGE_LIMIT;
-  const [searchTerm, setSearchTerm] = useState(initialSearch);
-  const searchTermRef = useRef(searchTerm);
-  const urlSearchTerm = (searchParams.get("search") ?? "").trim();
-  const isFirstSearchSyncRef = useRef(true);
-  const prevUrlSearchRef = useRef(urlSearchTerm);
-  const debouncedSearchTerm = useDebounce(searchTerm, 300);
-
-  useEffect(() => {
-    searchTermRef.current = searchTerm;
-  }, [searchTerm]);
-
-  const initialProductsMapped = useMemo(
-    () =>
-      initialProducts
-        .map((product) => mapApiProductToAppProduct(product))
-        .filter((product): product is AppProduct => product !== null),
-    [initialProducts]
-  );
-  const [compactProducts, setCompactProducts] = useState<AppProduct[]>(() =>
-    initialProductsMapped.slice(0, COMPACT_PAGE_LIMIT)
-  );
-  const [compactVisibleCount, setCompactVisibleCount] =
-    useState(COMPACT_PAGE_LIMIT);
-  const [isLoadMorePending, setIsLoadMorePending] = useState(false);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [selectedBrands, setSelectedBrands] = useState<string[]>(initialBrands);
-  const [inStockOnly, setInStockOnly] = useState(false);
-  const [isNewOnly, setIsNewOnly] = useState(initialIsNew);
-  const [isSaleOnly, setIsSaleOnly] = useState(initialIsSale);
-  const [minPrice, setMinPrice] = useState("");
-  const [maxPrice, setMaxPrice] = useState("");
-  const [sortOrder, setSortOrder] = useState("default");
+  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
+  const [draftMinPrice, setDraftMinPrice] = useState(minPrice);
+  const [draftMaxPrice, setDraftMaxPrice] = useState(maxPrice);
+  const [loadedProducts, setLoadedProducts] = useState(products);
+  const [loadedPage, setLoadedPage] = useState(currentPage);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [guestViewMode, setGuestViewMode] = useState<CatalogViewMode>(
     () => readStoredCatalogViewMode() ?? DEFAULT_CATALOG_VIEW_MODE
   );
   const [pendingViewMode, setPendingViewMode] =
     useState<CatalogViewMode | null>(null);
-  const [showInitialLoader, setShowInitialLoader] = useState(
-    () => initialProducts.length === 0
-  );
-  const [isFiltersOpen, setIsFiltersOpen] = useState(false);
-  const viewModeSaveRequestIdRef = useRef(0);
+  const debouncedMinPrice = useDebounce(draftMinPrice, 600);
+  const debouncedMaxPrice = useDebounce(draftMaxPrice, 600);
 
-  // Effective server-side filters — may differ from URL params when the user
-  // toggles isNew/isSale checkboxes in the sidebar.
-  const [effectiveIsNew, setEffectiveIsNew] = useState(initialIsNew);
-  const [effectiveIsSale, setEffectiveIsSale] = useState(initialIsSale);
-  const [effectiveBrands, setEffectiveBrands] =
-    useState<string[]>(initialBrands);
-  const compactQueryStateKey = [
-    initialCategory,
-    effectiveBrands.join(","),
-    effectiveIsNew ? "new" : "",
-    effectiveIsSale ? "sale" : "",
-    debouncedSearchTerm,
-  ].join("|");
   const persistedViewMode =
     currentUser?.catalogViewMode ?? guestViewMode ?? DEFAULT_CATALOG_VIEW_MODE;
   const viewMode = pendingViewMode ?? persistedViewMode;
-  const effectiveViewMode: CatalogViewMode = isDesktop ? viewMode : "grid";
-  const canUseInitialServerPayload =
-    currentPage === 1 &&
-    pageLimit === DESKTOP_PAGE_LIMIT &&
-    effectiveBrands.join(",") === initialBrands.join(",") &&
-    effectiveIsNew === initialIsNew &&
-    effectiveIsSale === initialIsSale &&
-    debouncedSearchTerm.trim() === initialSearch.trim();
 
   useEffect(() => {
-    const prevUrlSearch = prevUrlSearchRef.current;
-    prevUrlSearchRef.current = urlSearchTerm;
+    setDraftMinPrice(minPrice);
+  }, [minPrice]);
 
-    if (isFirstSearchSyncRef.current) {
-      isFirstSearchSyncRef.current = false;
-      return;
+  useEffect(() => {
+    setDraftMaxPrice(maxPrice);
+  }, [maxPrice]);
+
+  useEffect(() => {
+    if (isDesktop) {
+      setLoadedProducts(products);
+      setLoadedPage(currentPage);
+    } else {
+      setLoadedProducts(products.slice(0, MOBILE_CATALOG_PAGE_SIZE));
+      setLoadedPage(1);
     }
 
-    if (urlSearchTerm === searchTermRef.current.trim()) {
-      return;
-    }
+    setIsLoadingMore(false);
+  }, [
+    currentPage,
+    isDesktop,
+    inStockOnly,
+    isNewOnly,
+    isSaleOnly,
+    maxPrice,
+    minPrice,
+    products,
+    searchTerm,
+    selectedBrands,
+    selectedCategory,
+    sortOrder,
+  ]);
 
-    startTransition(() => {
-      setSearchTerm(urlSearchTerm);
+  const buildCatalogUrl = useCallback(
+    (
+      updates: Record<string, string | null>,
+      options?: { resetPage?: boolean }
+    ) => {
+      const query = new URLSearchParams(searchParams.toString());
 
-      // Reset filters only when user starts textual search: "" -> "query".
-      if (!prevUrlSearch && urlSearchTerm.length > 0) {
-        setSelectedBrands([]);
-        setEffectiveBrands([]);
-        setIsNewOnly(false);
-        setIsSaleOnly(false);
-        setEffectiveIsNew(false);
-        setEffectiveIsSale(false);
-        setInStockOnly(false);
-        setMinPrice("");
-        setMaxPrice("");
-        setSortOrder("default");
+      for (const [key, value] of Object.entries(updates)) {
+        if (!value) {
+          query.delete(key);
+        } else {
+          query.set(key, value);
+        }
       }
 
-      setCurrentPage(1);
+      if (options?.resetPage ?? true) {
+        query.delete("page");
+      }
+
+      const queryString = query.toString();
+      return queryString ? `${pathname}?${queryString}` : pathname;
+    },
+    [pathname, searchParams]
+  );
+
+  const handleNavigate = useCallback(
+    (
+      updates: Record<string, string | null>,
+      options?: { resetPage?: boolean; scroll?: boolean }
+    ) => {
+      router.push(buildCatalogUrl(updates, options), {
+        scroll: options?.scroll ?? false,
+      });
+    },
+    [buildCatalogUrl, router]
+  );
+
+  useEffect(() => {
+    const nextMinPrice = normalizePriceParam(debouncedMinPrice);
+    const nextMaxPrice = normalizePriceParam(debouncedMaxPrice);
+    const currentMinPrice = normalizePriceParam(minPrice);
+    const currentMaxPrice = normalizePriceParam(maxPrice);
+
+    if (nextMinPrice === currentMinPrice && nextMaxPrice === currentMaxPrice) {
+      return;
+    }
+
+    handleNavigate({
+      minPrice: nextMinPrice,
+      maxPrice: nextMaxPrice,
     });
-  }, [urlSearchTerm]);
+  }, [
+    debouncedMaxPrice,
+    debouncedMinPrice,
+    handleNavigate,
+    maxPrice,
+    minPrice,
+  ]);
 
   const handleViewModeChange = useCallback(
     async (nextViewMode: CatalogViewMode) => {
@@ -207,8 +273,6 @@ export function CatalogClient({
       }
 
       const previousViewMode = persistedViewMode;
-      const requestId = viewModeSaveRequestIdRef.current + 1;
-      viewModeSaveRequestIdRef.current = requestId;
 
       setPendingViewMode(nextViewMode);
       setGuestViewMode(nextViewMode);
@@ -222,10 +286,6 @@ export function CatalogClient({
       try {
         const response = await updateCatalogViewPreferenceCSR(nextViewMode);
 
-        if (viewModeSaveRequestIdRef.current !== requestId) {
-          return;
-        }
-
         setPendingViewMode(null);
         persistCatalogViewMode(response.catalogViewMode);
         queryClient.setQueryData<User | null>(USER_QUERY_KEY, {
@@ -233,10 +293,6 @@ export function CatalogClient({
           catalogViewMode: response.catalogViewMode,
         });
       } catch {
-        if (viewModeSaveRequestIdRef.current !== requestId) {
-          return;
-        }
-
         setPendingViewMode(null);
         setGuestViewMode(previousViewMode);
         persistCatalogViewMode(previousViewMode);
@@ -246,335 +302,22 @@ export function CatalogClient({
     [currentUser, persistedViewMode, queryClient, viewMode]
   );
 
-  const filterSourceProducts = useMemo(
-    () =>
-      initialFilterProducts
-        .map((product) => mapApiProductToAppProduct(product))
-        .filter((product): product is AppProduct => product !== null),
-    [initialFilterProducts]
-  );
+  const displayedProducts = useMemo(() => {
+    const min = normalizePriceParam(draftMinPrice);
+    const max = normalizePriceParam(draftMaxPrice);
+    const minValue = min ? Number(min) : null;
+    const maxValue = max ? Number(max) : null;
 
-  const buildLocalSearchResult = useCallback(
-    (normalizedSearch: string) => {
-      const matched = filterSourceProducts.filter((product) =>
-        normalizeSearchText(product.name).includes(normalizedSearch)
-      );
-
-      const total = matched.length;
-      const totalPages = Math.max(1, Math.ceil(total / pageLimit));
-      const safePage = Math.min(Math.max(currentPage, 1), totalPages);
-      const start = (safePage - 1) * pageLimit;
-
-      return {
-        products: matched.slice(start, start + pageLimit),
-        pagination: {
-          page: safePage,
-          limit: pageLimit,
-          total,
-          totalPages,
-        },
-      };
-    },
-    [currentPage, filterSourceProducts, pageLimit]
-  );
-
-  const productsQuery = useQuery({
-    queryKey: [
-      "catalog-products",
-      currentPage,
-      pageLimit,
-      initialCategory,
-      effectiveBrands.join(","),
-      effectiveIsNew,
-      effectiveIsSale,
-      debouncedSearchTerm,
-    ],
-    queryFn: async () => {
-      const normalizedSearch = normalizeSearchText(debouncedSearchTerm);
-      const canUseLocalSearchFallback =
-        normalizedSearch.length > 0 && filterSourceProducts.length > 0;
-
-      try {
-        const result = await getProductsCSR({
-          page: currentPage,
-          limit: pageLimit,
-          category: initialCategory || undefined,
-          brand:
-            effectiveBrands.length > 0 ? effectiveBrands.join(",") : undefined,
-          isNew: effectiveIsNew || undefined,
-          isSale: effectiveIsSale || undefined,
-          search: debouncedSearchTerm || undefined,
-        });
-
-        if (canUseLocalSearchFallback && result.products.length === 0) {
-          return buildLocalSearchResult(normalizedSearch);
-        }
-
-        return result;
-      } catch {
-        if (canUseLocalSearchFallback) {
-          return buildLocalSearchResult(normalizedSearch);
-        }
-
-        throw new Error("Не вдалося завантажити товари каталогу");
-      }
-    },
-    initialData: canUseInitialServerPayload
-      ? {
-          products: initialProductsMapped,
-          pagination: initialPagination,
-        }
-      : undefined,
-    placeholderData:
-      pageLimit === DESKTOP_PAGE_LIMIT ? keepPreviousData : undefined,
-  });
-
-  const products = useMemo(
-    () =>
-      productsQuery.data?.products ??
-      (currentPage === 1 ? initialProductsMapped : []),
-    [currentPage, initialProductsMapped, productsQuery.data?.products]
-  );
-  const pagination = useMemo(
-    () => productsQuery.data?.pagination ?? null,
-    [productsQuery.data?.pagination]
-  );
-
-  useEffect(() => {
-    if (!showInitialLoader || productsQuery.isFetching) {
-      return;
-    }
-
-    startTransition(() => {
-      setShowInitialLoader(false);
-    });
-  }, [productsQuery.isFetching, showInitialLoader]);
-
-  useEffect(() => {
-    if (!isCompactLayout) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      setCompactVisibleCount(COMPACT_PAGE_LIMIT);
-      setIsLoadMorePending(false);
-      setCurrentPage(1);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [compactQueryStateKey, isCompactLayout]);
-
-  useEffect(() => {
-    if (!isCompactLayout || !productsQuery.data) {
-      return;
-    }
-
-    const queryPage = productsQuery.data.pagination?.page ?? currentPage;
-
-    if (queryPage !== currentPage) {
-      return;
-    }
-
-    const frameId = window.requestAnimationFrame(() => {
-      setCompactProducts((prev) => {
-        const nextProducts = productsQuery.data?.products ?? [];
-
-        if (currentPage === 1) {
-          return nextProducts;
-        }
-
-        const knownIds = new Set(prev.map((product) => product.id));
-
-        return [
-          ...prev,
-          ...nextProducts.filter((product) => !knownIds.has(product.id)),
-        ];
-      });
-      setIsLoadMorePending(false);
-    });
-
-    return () => {
-      window.cancelAnimationFrame(frameId);
-    };
-  }, [currentPage, isCompactLayout, productsQuery.data]);
-
-  useEffect(() => {
-    if (isDesktop) {
-      const frameId = window.requestAnimationFrame(() => {
-        setIsFiltersOpen(false);
-      });
-
-      return () => {
-        window.cancelAnimationFrame(frameId);
-      };
-    }
-
-    if (!isFiltersOpen) {
-      return;
-    }
-
-    document.body.style.overflow = "hidden";
-
-    return () => {
-      document.body.style.overflow = "";
-    };
-  }, [isDesktop, isFiltersOpen]);
-
-  // Triggers a fresh server fetch for isNew/isSale — the DB fields
-  // (isNewProduct, isOnSale) are not reliably present on all records, so
-  // client-side re-filtering would silently drop all products.
-  const handleIsNewChange = useCallback((value: boolean) => {
-    setIsNewOnly(value);
-    setEffectiveIsNew(value);
-    setCurrentPage(1);
-  }, []);
-
-  const handleIsSaleChange = useCallback((value: boolean) => {
-    setIsSaleOnly(value);
-    setEffectiveIsSale(value);
-    setCurrentPage(1);
-  }, []);
-
-  const handleInStockChange = useCallback((value: boolean) => {
-    setInStockOnly(value);
-    setCurrentPage(1);
-  }, []);
-
-  const facetSourceProducts = useMemo(() => {
-    if (filterSourceProducts.length > 0) {
-      return filterSourceProducts;
-    }
-
-    if (products.length > 0) {
-      return products;
-    }
-
-    return initialProductsMapped;
-  }, [filterSourceProducts, products, initialProductsMapped]);
-
-  const brandFacets = useMemo(() => {
-    const facets = new Map<string, { label: string; count: number }>();
-
-    for (const product of facetSourceProducts) {
-      if (!product.brand) {
-        continue;
-      }
-
-      const label = normalizeBrandLabel(product.brand);
-      const key = normalizeBrandKey(label);
-      const current = facets.get(key);
-
-      if (!current) {
-        facets.set(key, { label, count: 1 });
-        continue;
-      }
-
-      // Keep a readable casing if available while merging case variants.
-      if (
-        current.label === current.label.toUpperCase() &&
-        label !== label.toUpperCase()
-      ) {
-        current.label = label;
-      }
-
-      current.count += 1;
-    }
-
-    return Array.from(facets.values()).sort((a, b) =>
-      a.label.localeCompare(b.label, "uk")
-    );
-  }, [facetSourceProducts]);
-
-  const brands = useMemo(() => {
-    return brandFacets.map((facet) => facet.label);
-  }, [brandFacets]);
-
-  const brandCounts = useMemo(() => {
-    if (!initialBrandCounts || Object.keys(initialBrandCounts).length === 0) {
-      return brandFacets.reduce<Record<string, number>>((acc, facet) => {
-        acc[facet.label] = facet.count;
-        return acc;
-      }, {});
-    }
-
-    const backendByKey = Object.entries(initialBrandCounts).reduce<
-      Record<string, number>
-    >((acc, [label, count]) => {
-      acc[normalizeBrandKey(label)] = count;
-      return acc;
-    }, {});
-
-    return brandFacets.reduce<Record<string, number>>((acc, facet) => {
-      const backendCount = backendByKey[normalizeBrandKey(facet.label)];
-      acc[facet.label] =
-        typeof backendCount === "number" ? backendCount : facet.count;
-      return acc;
-    }, {});
-  }, [brandFacets, initialBrandCounts]);
-
-  const priceBounds = useMemo(() => {
-    const prices = facetSourceProducts
-      .map((product) => product.price)
-      .filter((price) => Number.isFinite(price));
-
-    if (prices.length === 0) {
-      return { min: null, max: null };
-    }
-
-    return {
-      min: Math.min(...prices),
-      max: Math.max(...prices),
-    };
-  }, [facetSourceProducts]);
-
-  const filterCounts = useMemo(
-    () => ({
-      inStock: facetSourceProducts.filter((product) => product.inStock).length,
-      isNew: facetSourceProducts.filter((product) => product.isNew).length,
-      isSale: facetSourceProducts.filter(
-        (product) => product.isSale || Boolean(product.oldPrice)
-      ).length,
-    }),
-    [facetSourceProducts]
-  );
-
-  const hasLocalFilters =
-    inStockOnly || minPrice.trim().length > 0 || maxPrice.trim().length > 0;
-
-  const locallyFilteredProducts = useMemo(() => {
-    const min = minPrice ? Number(minPrice) : null;
-    const max = maxPrice ? Number(maxPrice) : null;
-
-    const source = hasLocalFilters ? facetSourceProducts : products;
-
-    const base = source.filter((product) => {
-      if (initialCategory) {
-        const productCategory = normalizeToken(product.category ?? "");
-        const productCategoryId = normalizeToken(product.categoryId ?? "");
-        const categoryToken = normalizeToken(initialCategory);
-
-        if (
-          productCategory !== categoryToken &&
-          productCategoryId !== categoryToken
-        ) {
-          return false;
-        }
-      }
-
-      // isNew / isSale are handled server-side via effectiveIsNew / effectiveIsSale.
-      // The DB fields (isNewProduct, isOnSale) may not be set on all records.
-
+    const filtered = loadedProducts.filter((product) => {
       if (inStockOnly && !product.inStock) {
         return false;
       }
 
-      if (min !== null && !Number.isNaN(min) && product.price < min) {
+      if (minValue !== null && product.price < minValue) {
         return false;
       }
 
-      if (max !== null && !Number.isNaN(max) && product.price > max) {
+      if (maxValue !== null && product.price > maxValue) {
         return false;
       }
 
@@ -582,186 +325,209 @@ export function CatalogClient({
     });
 
     if (sortOrder === "price-asc") {
-      return [...base].sort((a, b) => a.price - b.price);
+      return [...filtered].sort((left, right) => left.price - right.price);
     }
 
     if (sortOrder === "price-desc") {
-      return [...base].sort((a, b) => b.price - a.price);
+      return [...filtered].sort((left, right) => right.price - left.price);
     }
 
     if (sortOrder === "name") {
-      return [...base].sort((a, b) => a.name.localeCompare(b.name, "uk"));
+      return [...filtered].sort((left, right) =>
+        left.name.localeCompare(right.name, "uk")
+      );
     }
 
-    return base;
-  }, [
-    facetSourceProducts,
-    hasLocalFilters,
-    initialCategory,
-    inStockOnly,
-    maxPrice,
-    minPrice,
-    products,
-    sortOrder,
-  ]);
+    return filtered;
+  }, [draftMaxPrice, draftMinPrice, inStockOnly, loadedProducts, sortOrder]);
 
-  const derivedPagination = useMemo(() => {
-    if (!hasLocalFilters) {
-      return pagination;
-    }
+  const hasClientSideFilters =
+    inStockOnly ||
+    draftMinPrice.trim().length > 0 ||
+    draftMaxPrice.trim().length > 0;
+  const productsCount = hasClientSideFilters
+    ? displayedProducts.length
+    : typeof pagination?.total === "number" && pagination.total > 0
+    ? pagination.total
+    : displayedProducts.length;
+  const shouldUseLoadMore = !isDesktop;
+  const totalPages = shouldUseLoadMore
+    ? Math.max(
+        1,
+        Math.ceil(
+          (pagination?.total ?? displayedProducts.length) /
+            MOBILE_CATALOG_PAGE_SIZE
+        )
+      )
+    : Math.max(1, pagination?.totalPages ?? 1);
+  const shouldShowPagination =
+    !shouldUseLoadMore && !hasClientSideFilters && totalPages > 1;
+  const hasMorePages = !hasClientSideFilters && loadedPage < totalPages;
 
-    const total = locallyFilteredProducts.length;
-    const totalPages = Math.max(1, Math.ceil(total / DESKTOP_PAGE_LIMIT));
+  const handleToggleBrand = useCallback(
+    (brand: string) => {
+      const normalizedBrand = normalizeBrandLabel(brand);
+      const nextBrands = selectedBrands.includes(normalizedBrand)
+        ? selectedBrands.filter((item) => item !== normalizedBrand)
+        : [...selectedBrands, normalizedBrand];
 
-    return {
-      page: Math.min(currentPage, totalPages),
-      limit: DESKTOP_PAGE_LIMIT,
-      total,
-      totalPages,
-    } satisfies Pagination;
-  }, [
-    currentPage,
-    hasLocalFilters,
-    locallyFilteredProducts.length,
-    pagination,
-  ]);
+      handleNavigate({
+        brand: nextBrands.length > 0 ? nextBrands.join(",") : null,
+      });
+    },
+    [handleNavigate, selectedBrands]
+  );
 
-  const filteredProducts = useMemo(() => {
-    if (!hasLocalFilters) {
-      return locallyFilteredProducts;
-    }
+  const handleSortOrderChange = useCallback(
+    (value: string) => {
+      const nextSort = createSortParams(value);
 
-    const start = (currentPage - 1) * DESKTOP_PAGE_LIMIT;
-    return locallyFilteredProducts.slice(start, start + DESKTOP_PAGE_LIMIT);
-  }, [currentPage, hasLocalFilters, locallyFilteredProducts]);
+      handleNavigate({
+        sort: nextSort.sort,
+        order: nextSort.order,
+      });
+    },
+    [handleNavigate]
+  );
 
-  useEffect(() => {
-    if (!hasLocalFilters) {
+  const handlePageChange = useCallback(
+    (page: number) => {
+      handleNavigate(
+        {
+          page: page > 1 ? String(page) : null,
+        },
+        { resetPage: false, scroll: true }
+      );
+    },
+    [handleNavigate]
+  );
+
+  const handleLoadMore = useCallback(async () => {
+    if (isDesktop || hasClientSideFilters || isLoadingMore || !hasMorePages) {
       return;
     }
 
-    const totalPages = Math.max(
-      1,
-      Math.ceil(locallyFilteredProducts.length / DESKTOP_PAGE_LIMIT)
-    );
-    if (currentPage > totalPages) {
-      startTransition(() => {
-        setCurrentPage(totalPages);
+    const nextPage = loadedPage + 1;
+    const apiSort = createApiSortParams(sortOrder);
+
+    setIsLoadingMore(true);
+
+    try {
+      const response = await getProductsCSR({
+        page: nextPage,
+        limit: shouldUseLoadMore
+          ? MOBILE_CATALOG_PAGE_SIZE
+          : pagination?.limit ?? (products.length || 12),
+        category: selectedCategory || undefined,
+        brand: selectedBrands.length > 0 ? selectedBrands.join(",") : undefined,
+        isNew: isNewOnly || undefined,
+        isSale: isSaleOnly || undefined,
+        search: searchTerm.trim() || undefined,
+        minPrice: minPrice || undefined,
+        maxPrice: maxPrice || undefined,
+        inStock: inStockOnly || undefined,
+        sort: apiSort.sort,
+        order: apiSort.order,
       });
+
+      setLoadedProducts((currentProducts) =>
+        mergeUniqueProducts(currentProducts, response.products)
+      );
+      setLoadedPage(nextPage);
+    } catch (error) {
+      toast.error(
+        getApiErrorMessage(error, "Не вдалося завантажити більше товарів")
+      );
+    } finally {
+      setIsLoadingMore(false);
     }
-  }, [currentPage, hasLocalFilters, locallyFilteredProducts.length]);
+  }, [
+    hasClientSideFilters,
+    hasMorePages,
+    inStockOnly,
+    isDesktop,
+    isLoadingMore,
+    isNewOnly,
+    isSaleOnly,
+    loadedPage,
+    maxPrice,
+    minPrice,
+    pagination?.limit,
+    products.length,
+    searchTerm,
+    selectedBrands,
+    selectedCategory,
+    shouldUseLoadMore,
+    sortOrder,
+  ]);
 
-  const handleToggleBrand = useCallback((brand: string) => {
-    setSelectedBrands((prev) => {
-      const normalizedBrand = normalizeBrandLabel(brand);
-      const next = prev.includes(normalizedBrand)
-        ? prev.filter((item) => item !== normalizedBrand)
-        : [...prev, normalizedBrand];
+  const handleIsNewChange = useCallback(
+    (value: boolean) => {
+      handleNavigate({ isNew: value ? "true" : null });
+    },
+    [handleNavigate]
+  );
 
-      setEffectiveBrands(next);
-      setCurrentPage(1);
+  const handleIsSaleChange = useCallback(
+    (value: boolean) => {
+      handleNavigate({ isSale: value ? "true" : null });
+    },
+    [handleNavigate]
+  );
 
-      return next;
-    });
+  const handleInStockChange = useCallback(
+    (value: boolean) => {
+      handleNavigate({ inStock: value ? "true" : null });
+    },
+    [handleNavigate]
+  );
+
+  const handleMinPriceChange = useCallback((value: string) => {
+    setDraftMinPrice(value);
   }, []);
 
-  const normalizeCatalogUrl = useCallback(
-    (options?: { search?: string }) => {
-      const query = new URLSearchParams();
-      const nextSearch = options?.search ?? searchTerm;
+  const handleMaxPriceChange = useCallback((value: string) => {
+    setDraftMaxPrice(value);
+  }, []);
 
-      if (initialCategory) {
-        query.set("category", initialCategory);
-      }
+  const clearFilters = useCallback(
+    (options?: { clearSearch?: boolean }) => {
+      setDraftMinPrice("");
+      setDraftMaxPrice("");
 
-      if (nextSearch.trim()) {
-        query.set("search", nextSearch.trim());
-      }
-
-      const queryString = query.toString();
-      const basePath = pathname || "/catalog";
-      return queryString ? `${basePath}?${queryString}` : basePath;
+      handleNavigate({
+        brand: null,
+        isNew: null,
+        isSale: null,
+        minPrice: null,
+        maxPrice: null,
+        inStock: null,
+        sort: null,
+        order: null,
+        search: options?.clearSearch ? null : searchTerm.trim() || null,
+      });
     },
-    [initialCategory, pathname, searchTerm]
-  );
-
-  const clearFilters = (options?: { clearSearch?: boolean }) => {
-    const shouldClearSearch = options?.clearSearch ?? false;
-
-    setSelectedBrands([]);
-    setInStockOnly(false);
-    setMinPrice("");
-    setMaxPrice("");
-    setIsNewOnly(false);
-    setIsSaleOnly(false);
-
-    setEffectiveBrands([]);
-    setEffectiveIsNew(false);
-    setEffectiveIsSale(false);
-    setCurrentPage(1);
-
-    if (shouldClearSearch) {
-      setSearchTerm("");
-    }
-
-    router.replace(
-      normalizeCatalogUrl({ search: shouldClearSearch ? "" : searchTerm }),
-      { scroll: false }
-    );
-  };
-
-  const handleMinPriceChange = useCallback(
-    (value: string) => {
-      // Price search starts a fresh filtering flow from page 1.
-      setSelectedBrands([]);
-      setInStockOnly(false);
-      setIsNewOnly(false);
-      setIsSaleOnly(false);
-      setEffectiveBrands([]);
-      setEffectiveIsNew(false);
-      setEffectiveIsSale(false);
-      setMinPrice(value);
-      setCurrentPage(1);
-      router.replace(normalizeCatalogUrl(), { scroll: false });
-    },
-    [normalizeCatalogUrl, router]
-  );
-
-  const handleMaxPriceChange = useCallback(
-    (value: string) => {
-      // Price search starts a fresh filtering flow from page 1.
-      setSelectedBrands([]);
-      setInStockOnly(false);
-      setIsNewOnly(false);
-      setIsSaleOnly(false);
-      setEffectiveBrands([]);
-      setEffectiveIsNew(false);
-      setEffectiveIsSale(false);
-      setMaxPrice(value);
-      setCurrentPage(1);
-      router.replace(normalizeCatalogUrl(), { scroll: false });
-    },
-    [normalizeCatalogUrl, router]
+    [handleNavigate, searchTerm]
   );
 
   const breadcrumbSegments = (() => {
-    if (!initialCategory) {
+    if (!selectedCategory) {
       if (searchTerm.trim()) {
         return [`Пошук: ${searchTerm.trim()}`];
       }
 
-      if (initialIsNew) {
+      if (isNewOnly) {
         return ["Новинки"];
       }
 
-      if (initialIsSale) {
+      if (isSaleOnly) {
         return ["Акції"];
       }
 
       return ["Каталог"];
     }
 
-    const token = normalizeToken(initialCategory);
+    const token = normalizeToken(selectedCategory);
     const categoryById = categories.find(
       (category) => normalizeToken(category.id) === token
     );
@@ -799,7 +565,6 @@ export function CatalogClient({
       }
     }
 
-    // Fallback for legacy links that can carry slug/name values instead of IDs.
     for (const category of categories) {
       if (
         normalizeToken(category.name) === token ||
@@ -827,73 +592,8 @@ export function CatalogClient({
       }
     }
 
-    return [initialCategory];
+    return [selectedCategory];
   })();
-
-  const effectivePagination = derivedPagination;
-  const effectivePageCount = Math.max(1, effectivePagination?.totalPages ?? 1);
-  const shouldShowPagination = isDesktop && effectivePageCount > 1;
-  const compactDisplayedProducts = useMemo(() => {
-    if (!isCompactLayout) {
-      return [] as AppProduct[];
-    }
-
-    if (hasLocalFilters) {
-      return locallyFilteredProducts.slice(0, compactVisibleCount);
-    }
-
-    return compactProducts;
-  }, [
-    compactProducts,
-    compactVisibleCount,
-    hasLocalFilters,
-    isCompactLayout,
-    locallyFilteredProducts,
-  ]);
-  const compactTotalProducts = hasLocalFilters
-    ? locallyFilteredProducts.length
-    : effectivePagination?.total ?? compactProducts.length;
-  const canLoadMoreCompactProducts = isCompactLayout
-    ? hasLocalFilters
-      ? compactVisibleCount < locallyFilteredProducts.length
-      : compactProducts.length < compactTotalProducts
-    : false;
-  const displayedProducts = isCompactLayout
-    ? compactDisplayedProducts
-    : filteredProducts;
-  const isCatalogLoading = isDesktop
-    ? showInitialLoader
-    : showInitialLoader && compactProducts.length === 0;
-
-  const handlePageChange = ({ selected }: PageChangeEvent) => {
-    const nextPage = selected + 1;
-    setCurrentPage(nextPage);
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  };
-
-  const handleLoadMore = () => {
-    if (!isCompactLayout || isLoadMorePending) {
-      return;
-    }
-
-    if (hasLocalFilters) {
-      setIsLoadMorePending(true);
-
-      window.setTimeout(() => {
-        setCompactVisibleCount((prev) => prev + COMPACT_PAGE_LIMIT);
-        setIsLoadMorePending(false);
-      }, 300);
-
-      return;
-    }
-
-    if (compactProducts.length >= compactTotalProducts) {
-      return;
-    }
-
-    setIsLoadMorePending(true);
-    setCurrentPage((prev) => prev + 1);
-  };
 
   return (
     <section className="brand-page-section" data-tone="compact">
@@ -920,10 +620,9 @@ export function CatalogClient({
         <section className={styles.catalogSection}>
           <div className={styles.container}>
             <div className={styles.layout}>
-              <CatalogFilters
+              <Filters
                 brands={brands}
                 brandCounts={brandCounts}
-                isDesktop={isDesktop}
                 isOpen={isFiltersOpen}
                 selectedBrands={selectedBrands}
                 onToggleBrand={handleToggleBrand}
@@ -933,8 +632,8 @@ export function CatalogClient({
                 onIsNewChange={handleIsNewChange}
                 isSaleOnly={isSaleOnly}
                 onIsSaleChange={handleIsSaleChange}
-                minPrice={minPrice}
-                maxPrice={maxPrice}
+                minPrice={draftMinPrice}
+                maxPrice={draftMaxPrice}
                 minAvailablePrice={priceBounds.min}
                 maxAvailablePrice={priceBounds.max}
                 inStockCount={filterCounts.inStock}
@@ -943,104 +642,67 @@ export function CatalogClient({
                 onMinPriceChange={handleMinPriceChange}
                 onMaxPriceChange={handleMaxPriceChange}
                 onClose={() => setIsFiltersOpen(false)}
-                onReset={clearFilters}
+                onReset={() => clearFilters()}
               />
 
               <main className={styles.main}>
-                {!isDesktop ? (
-                  <div className={styles.mobileActionsRow}>
-                    <button
-                      type="button"
-                      className={styles.mobileFiltersBtn}
-                      onClick={() => setIsFiltersOpen(true)}
-                      aria-expanded={isFiltersOpen}
-                      aria-controls="catalog-filters"
-                    >
-                      <Funnel size={16} aria-hidden="true" />
-                      Фільтр
-                    </button>
-                  </div>
-                ) : null}
+                <div className={styles.mobileActionsRow}>
+                  <button
+                    type="button"
+                    className={styles.mobileFiltersBtn}
+                    onClick={() => setIsFiltersOpen(true)}
+                    aria-expanded={isFiltersOpen}
+                    aria-controls="catalog-filters"
+                  >
+                    <Funnel size={16} aria-hidden="true" />
+                    Фільтр
+                  </button>
+                </div>
 
                 <CatalogToolbar
-                  showViewToggle={isDesktop}
-                  viewMode={effectiveViewMode}
+                  showViewToggle
+                  viewMode={viewMode}
                   onViewModeChange={handleViewModeChange}
                   sortOrder={sortOrder}
-                  onSortOrderChange={setSortOrder}
-                  productsCount={
-                    effectivePagination?.total ?? displayedProducts.length
-                  }
+                  onSortOrderChange={handleSortOrderChange}
+                  productsCount={productsCount}
                   title={breadcrumbSegments[breadcrumbSegments.length - 1]}
                 />
 
-                {isCatalogLoading ? (
-                  <div
-                    className={styles.pageLoader}
-                    role="status"
-                    aria-live="polite"
-                  >
-                    <Loader />
-                  </div>
-                ) : (
-                  <>
-                    <ProductList
-                      products={displayedProducts}
-                      viewMode={effectiveViewMode}
-                      onResetFilters={() => clearFilters({ clearSearch: true })}
-                    />
+                <ProductGrid
+                  products={displayedProducts}
+                  viewMode={viewMode}
+                  onResetFilters={() => clearFilters({ clearSearch: true })}
+                />
 
-                    {isCompactLayout &&
-                    (canLoadMoreCompactProducts || isLoadMorePending) ? (
-                      <div className={styles.loadMoreWrap}>
-                        {isLoadMorePending ? (
-                          <div
-                            className={styles.loadMorePending}
-                            role="status"
-                            aria-live="polite"
-                          >
-                            <Loader className={styles.loadMoreLoader} />
-                            <span className={styles.visuallyHidden}>
-                              Завантаження...
-                            </span>
-                          </div>
-                        ) : (
-                          <button
-                            type="button"
-                            className={styles.loadMoreButton}
-                            onClick={handleLoadMore}
-                          >
-                            Показати ще
-                          </button>
-                        )}
+                {shouldShowPagination ? (
+                  <CatalogPagination
+                    pageCount={totalPages}
+                    currentPage={currentPage}
+                    onPageChange={handlePageChange}
+                  />
+                ) : null}
+
+                {shouldUseLoadMore && hasMorePages ? (
+                  <div className={styles.loadMoreWrap}>
+                    {isLoadingMore ? (
+                      <div className={styles.loadMorePending}>
+                        <Loader className={styles.loadMoreLoader} />
+                        <span className={styles.visuallyHidden}>
+                          Завантаження додаткових товарів
+                        </span>
                       </div>
-                    ) : null}
-
-                    {shouldShowPagination && (
-                      <ReactPaginate
-                        breakLabel="..."
-                        nextLabel="Далі"
-                        previousLabel="Назад"
-                        onPageChange={handlePageChange}
-                        pageRangeDisplayed={3}
-                        marginPagesDisplayed={1}
-                        pageCount={effectivePageCount}
-                        forcePage={currentPage - 1}
-                        containerClassName={styles.pagination}
-                        pageClassName={styles.pageItem}
-                        pageLinkClassName={styles.pageLink}
-                        previousClassName={styles.pageItem}
-                        previousLinkClassName={styles.pageLink}
-                        nextClassName={styles.pageItem}
-                        nextLinkClassName={styles.pageLink}
-                        breakClassName={styles.pageItem}
-                        breakLinkClassName={styles.pageLink}
-                        activeClassName={styles.pageItemActive}
-                        disabledClassName={styles.pageItemDisabled}
-                      />
+                    ) : (
+                      <button
+                        type="button"
+                        className={styles.loadMoreButton}
+                        onClick={handleLoadMore}
+                      >
+                        Показати ще
+                      </button>
                     )}
-                  </>
-                )}
+                  </div>
+                ) : null}
               </main>
             </div>
           </div>

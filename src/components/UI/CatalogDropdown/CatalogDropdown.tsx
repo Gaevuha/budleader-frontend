@@ -51,6 +51,24 @@ export const CatalogDropdown = ({
     );
   }, [currentSubCats]);
 
+  const groupedColumns = useMemo(() => {
+    if (subcategoriesWithLinks.length === 0) {
+      return [] as (typeof subcategoriesWithLinks)[];
+    }
+
+    const columnCount = Math.min(3, subcategoriesWithLinks.length);
+    const itemsPerColumn = Math.ceil(
+      subcategoriesWithLinks.length / columnCount
+    );
+
+    return Array.from({ length: columnCount }, (_, columnIndex) =>
+      subcategoriesWithLinks.slice(
+        columnIndex * itemsPerColumn,
+        columnIndex * itemsPerColumn + itemsPerColumn
+      )
+    );
+  }, [subcategoriesWithLinks]);
+
   const activeCategory = useMemo(() => {
     return (
       categories.find((category) => category.id === resolvedActiveTab) ?? null
@@ -85,51 +103,49 @@ export const CatalogDropdown = ({
       <div className={styles.content}>
         {subcategoriesWithLinks.length > 0 ? (
           <div className={styles.columns}>
-            {[0, 1, 2].map((columnIndex) => (
+            {groupedColumns.map((groups, columnIndex) => (
               <div key={columnIndex} className={styles.column}>
-                {subcategoriesWithLinks
-                  .slice(columnIndex * 3, columnIndex * 3 + 3)
-                  .map((group, idx) => (
-                    <div key={`${group.name}-${idx}`} className={styles.group}>
-                      <h4 className={styles.groupTitle}>
-                        <Link
-                          href={
-                            activeCategory
-                              ? `/catalog?category=${encodeURIComponent(
-                                  activeCategory.id
-                                )}`
-                              : "/catalog"
-                          }
-                          onClick={onClose}
-                        >
-                          {group.name}
-                        </Link>
-                      </h4>
-                      <ul className={styles.list}>
-                        {(group.links ?? []).map((rawItem, itemIndex) => {
-                          const item = toSubcategoryItem(rawItem);
-                          const categoryParam = item.id ?? activeCategory?.id;
+                {groups.map((group, idx) => (
+                  <div key={`${group.name}-${idx}`} className={styles.group}>
+                    <h4 className={styles.groupTitle}>
+                      <Link
+                        href={
+                          activeCategory
+                            ? `/catalog?category=${encodeURIComponent(
+                                activeCategory.id
+                              )}`
+                            : "/catalog"
+                        }
+                        onClick={onClose}
+                      >
+                        {group.name}
+                      </Link>
+                    </h4>
+                    <ul className={styles.list}>
+                      {(group.links ?? []).map((rawItem, itemIndex) => {
+                        const item = toSubcategoryItem(rawItem);
+                        const categoryParam = item.id ?? activeCategory?.id;
 
-                          return (
-                            <li key={`${item.label}-${itemIndex}`}>
-                              <Link
-                                href={
-                                  categoryParam
-                                    ? `/catalog?category=${encodeURIComponent(
-                                        categoryParam
-                                      )}`
-                                    : "/catalog"
-                                }
-                                onClick={onClose}
-                              >
-                                {item.label}
-                              </Link>
-                            </li>
-                          );
-                        })}
-                      </ul>
-                    </div>
-                  ))}
+                        return (
+                          <li key={`${item.label}-${itemIndex}`}>
+                            <Link
+                              href={
+                                categoryParam
+                                  ? `/catalog?category=${encodeURIComponent(
+                                      categoryParam
+                                    )}`
+                                  : "/catalog"
+                              }
+                              onClick={onClose}
+                            >
+                              {item.label}
+                            </Link>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                ))}
               </div>
             ))}
           </div>

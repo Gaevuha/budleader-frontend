@@ -1,13 +1,13 @@
 import { create, type StoreApi } from "zustand";
 
-import { mapApiProductToAppProduct } from "@/services/api";
 import {
   addToCart,
   clearCart as clearServerCart,
   getCart,
+  mapApiProductToAppProduct,
   removeFromCart as removeFromServerCart,
   updateCartItem,
-} from "@/services/cartService";
+} from "@/services/api";
 import { useAuthStore } from "@/store/auth/authStore";
 import type { AppProduct } from "@/types/app";
 import type { CartData } from "@/types/cart";
@@ -92,19 +92,102 @@ const loadGuestCart = (): CartItem[] => {
   }
 };
 
-const mapServerCartToStoreItems = (serverCart: CartData): CartItem[] => {
-  return serverCart.items.map((item) => {
+const shouldLogAuthenticatedCart = () =>
+  process.env.NODE_ENV !== "production" &&
+  useAuthStore.getState().isAuthenticated;
+
+const logAuthenticatedCartState = (
+  stage: string,
+  details: Record<string, unknown>
+) => {
+  if (!shouldLogAuthenticatedCart()) {
+    return;
+  }
+
+  console.groupCollapsed(`[cart][auth] ${stage}`);
+  for (const [key, value] of Object.entries(details)) {
+    console.log(key, value);
+  }
+  console.groupEnd();
+};
+
+const isMeaningfulName = (value: string | undefined): boolean => {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized.length > 0 &&
+    normalized !== "товар" &&
+    normalized !== "товар без назви"
+  );
+};
+
+const isMeaningfulImage = (value: string | undefined): boolean => {
+  if (!value) {
+    return false;
+  }
+
+  const normalized = value.trim();
+  return normalized.length > 0 && normalized !== "/img/not-img.webp";
+};
+
+const resolveMeaningfulStock = (
+  primaryStock: number | undefined,
+  fallbackStock: number | undefined
+): number | undefined => {
+  if (typeof primaryStock === "number" && Number.isFinite(primaryStock)) {
+    return Math.max(0, primaryStock);
+  }
+
+  if (typeof fallbackStock === "number" && Number.isFinite(fallbackStock)) {
+    return Math.max(0, fallbackStock);
+  }
+
+  return undefined;
+};
+
+const resolveCartFallbackItem = (
+  item: CartData["items"][number],
+  index: number,
+  fallbackItems: CartItem[],
+  fallbackByProductId: Map<string, CartItem>
+): CartItem | undefined => {
+  return (
+    fallbackByProductId.get(item.productId) ??
+    fallbackItems.find((fallbackItem) => fallbackItem.id === item.productId) ??
+    fallbackItems[index]
+  );
+};
+
+const mapServerCartToStoreItems = (
+  serverCart: CartData,
+  fallbackItems: CartItem[] = []
+): CartItem[] => {
+  const fallbackByProductId = new Map(
+    fallbackItems.map((item) => [item.productId, item])
+  );
+
+  return serverCart.items.map((item, index) => {
+    const fallbackItem = resolveCartFallbackItem(
+      item,
+      index,
+      fallbackItems,
+      fallbackByProductId
+    );
     const mappedProduct = item.product
       ? mapApiProductToAppProduct(item.product) ?? {
           id: item.productId,
-          name: item.product?.name ?? "Товар",
-          price: item.price,
-          image: item.product?.image ?? "/img/not-img.webp",
-          category: "Загальна",
-          brand: "Budleader",
-          inStock: true,
+          name: item.product?.name ?? fallbackItem?.name ?? "Товар",
+          price: item.price || fallbackItem?.price || 0,
+          image:
+            item.product?.image ?? fallbackItem?.image ?? "/img/not-img.webp",
+          category: fallbackItem?.category ?? "Загальна",
+          brand: fallbackItem?.brand ?? "Budleader",
+          inStock: fallbackItem?.inStock ?? true,
         }
-      : {
+      : fallbackItem ?? {
           id: item.productId,
           name: "Товар",
           price: item.price,
@@ -114,7 +197,33 @@ const mapServerCartToStoreItems = (serverCart: CartData): CartItem[] => {
           inStock: true,
         };
 
-    return normalizeCartItem(mappedProduct, item.quantity, item.productId);
+    const mergedProduct: AppProduct = {
+      ...(fallbackItem ?? {}),
+      ...mappedProduct,
+      id: mappedProduct.id || fallbackItem?.id || item.productId,
+      name: isMeaningfulName(mappedProduct.name)
+        ? mappedProduct.name
+        : fallbackItem?.name ?? "Товар",
+      price:
+        item.price > 0
+          ? item.price
+          : mappedProduct.price > 0
+          ? mappedProduct.price
+          : fallbackItem?.price ?? 0,
+      stock: resolveMeaningfulStock(mappedProduct.stock, fallbackItem?.stock),
+      image: isMeaningfulImage(mappedProduct.image)
+        ? mappedProduct.image
+        : fallbackItem?.image ?? "/img/not-img.webp",
+      category: mappedProduct.category || fallbackItem?.category || "Загальна",
+      brand: mappedProduct.brand || fallbackItem?.brand || "Budleader",
+      inStock: mappedProduct.inStock ?? fallbackItem?.inStock ?? true,
+    };
+
+    return normalizeCartItem(
+      mergedProduct,
+      item.quantity,
+      item.productId || mergedProduct.id
+    );
   });
 };
 
@@ -164,17 +273,60 @@ export const useCartStore = create<CartStore>((set, get) => ({
   addToCart: async (product, quantity = 1) => {
     if (useAuthStore.getState().isAuthenticated) {
       addPendingProductId(set, product.id);
-      set({ isSyncing: true });
+
+      const previousItems = get().cart;
+      const normalizedProduct = normalizeCartItem(product, quantity);
+      const optimisticItems = (() => {
+        const existing = previousItems.find(
+          (item) => item.productId === product.id
+        );
+
+        if (!existing) {
+          return [...previousItems, normalizedProduct];
+        }
+
+        return previousItems.map((item) =>
+          item.productId === product.id
+            ? {
+                ...item,
+                quantity: item.quantity + Math.max(1, quantity),
+              }
+            : item
+        );
+      })();
+
+      setCartState(set, optimisticItems);
+      logAuthenticatedCartState("add optimistic", {
+        productId: product.id,
+        previousItems,
+        optimisticItems,
+      });
 
       try {
         const serverCart = await addToCart({
           productId: product.id,
           quantity: Math.max(1, quantity),
         });
-        setCartState(set, mapServerCartToStoreItems(serverCart));
+        const mergedItems = mapServerCartToStoreItems(
+          serverCart,
+          optimisticItems
+        );
+        logAuthenticatedCartState("add server response", {
+          productId: product.id,
+          serverCart,
+          mergedItems,
+        });
+        setCartState(set, mergedItems);
+      } catch (error) {
+        logAuthenticatedCartState("add rollback", {
+          productId: product.id,
+          error,
+          rollbackItems: previousItems,
+        });
+        setCartState(set, previousItems);
+        throw error;
       } finally {
         removePendingProductId(set, product.id);
-        set({ isSyncing: false });
       }
 
       return;
@@ -228,14 +380,40 @@ export const useCartStore = create<CartStore>((set, get) => ({
   removeFromCart: async (id) => {
     if (useAuthStore.getState().isAuthenticated) {
       addPendingProductId(set, id);
-      set({ isSyncing: true });
+
+      const previousItems = get().cart;
+      const optimisticItems = previousItems.filter(
+        (item) => item.productId !== id
+      );
+      setCartState(set, optimisticItems);
+      logAuthenticatedCartState("remove optimistic", {
+        productId: id,
+        previousItems,
+        optimisticItems,
+      });
 
       try {
         const serverCart = await removeFromServerCart(id);
-        setCartState(set, mapServerCartToStoreItems(serverCart));
+        const mergedItems = mapServerCartToStoreItems(
+          serverCart,
+          optimisticItems
+        );
+        logAuthenticatedCartState("remove server response", {
+          productId: id,
+          serverCart,
+          mergedItems,
+        });
+        setCartState(set, mergedItems);
+      } catch (error) {
+        logAuthenticatedCartState("remove rollback", {
+          productId: id,
+          error,
+          rollbackItems: previousItems,
+        });
+        setCartState(set, previousItems);
+        throw error;
       } finally {
         removePendingProductId(set, id);
-        set({ isSyncing: false });
       }
 
       return;
@@ -253,9 +431,27 @@ export const useCartStore = create<CartStore>((set, get) => ({
     if (useAuthStore.getState().isAuthenticated) {
       set({ isSyncing: true });
 
+      const previousItems = get().cart;
+      setCartState(set, []);
+      logAuthenticatedCartState("clear optimistic", {
+        previousItems,
+      });
+
       try {
         const serverCart = await clearServerCart();
-        setCartState(set, mapServerCartToStoreItems(serverCart));
+        const mergedItems = mapServerCartToStoreItems(serverCart);
+        logAuthenticatedCartState("clear server response", {
+          serverCart,
+          mergedItems,
+        });
+        setCartState(set, mergedItems);
+      } catch (error) {
+        logAuthenticatedCartState("clear rollback", {
+          error,
+          rollbackItems: previousItems,
+        });
+        setCartState(set, previousItems);
+        throw error;
       } finally {
         set({ isSyncing: false });
       }
@@ -282,18 +478,52 @@ export const useCartStore = create<CartStore>((set, get) => ({
     }
 
     addPendingProductId(set, productId);
-    set({ isSyncing: true });
+
+    const previousItems = get().cart;
+    const optimisticItems =
+      quantity <= 0
+        ? previousItems.filter((item) => item.productId !== productId)
+        : previousItems.map((item) =>
+            item.productId === productId
+              ? { ...item, quantity: Math.max(1, quantity) }
+              : item
+          );
+
+    setCartState(set, optimisticItems);
+    logAuthenticatedCartState("update optimistic", {
+      productId,
+      quantity,
+      previousItems,
+      optimisticItems,
+    });
 
     try {
       const serverCart =
         quantity <= 0
           ? await removeFromServerCart(productId)
           : await updateCartItem(productId, quantity);
-      const items = mapServerCartToStoreItems(serverCart);
-      setCartState(set, items);
+      const mergedItems = mapServerCartToStoreItems(
+        serverCart,
+        optimisticItems
+      );
+      logAuthenticatedCartState("update server response", {
+        productId,
+        quantity,
+        serverCart,
+        mergedItems,
+      });
+      setCartState(set, mergedItems);
+    } catch (error) {
+      logAuthenticatedCartState("update rollback", {
+        productId,
+        quantity,
+        error,
+        rollbackItems: previousItems,
+      });
+      setCartState(set, previousItems);
+      throw error;
     } finally {
       removePendingProductId(set, productId);
-      set({ isSyncing: false });
     }
   },
   syncWithServer: async (serverCart) => {
@@ -305,7 +535,12 @@ export const useCartStore = create<CartStore>((set, get) => ({
 
     try {
       const resolvedCart = serverCart ?? (await getCart());
-      setCartState(set, mapServerCartToStoreItems(resolvedCart));
+      const mergedItems = mapServerCartToStoreItems(resolvedCart, get().cart);
+      logAuthenticatedCartState("sync with server", {
+        resolvedCart,
+        mergedItems,
+      });
+      setCartState(set, mergedItems);
     } finally {
       set({ isSyncing: false });
     }
@@ -351,7 +586,7 @@ export const useCartStore = create<CartStore>((set, get) => ({
 
       clearGuestCartStorage();
       const mergedCart = await getCart();
-      setCartState(set, mapServerCartToStoreItems(mergedCart));
+      setCartState(set, mapServerCartToStoreItems(mergedCart, get().cart));
     } finally {
       set({ isSyncing: false });
     }

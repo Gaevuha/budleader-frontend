@@ -266,13 +266,13 @@ export function MobileMenu({
             </div>
 
             <div className={styles.footer}>
-              <a
+              <Link
                 href={phoneHref}
                 className={styles.contactLink}
                 onClick={onClose}
               >
                 {publicSupportSettings.contactPhone}
-              </a>
+              </Link>
               <p className={styles.footerText}>
                 Працюємо щодня для ваших замовлень
               </p>

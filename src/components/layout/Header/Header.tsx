@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 import { CatalogDropdown } from "../../UI/CatalogDropdown/CatalogDropdown";
+import { useDebounce } from "@/hooks/useDebounce";
 import { USER_QUERY_KEY, useLogout, useUser } from "@/queries/authQueries";
 import type { Category } from "@/types/category";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
@@ -28,7 +29,7 @@ import { useCartStore } from "@/store/cart/cartStore";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
 import { useUIStore } from "@/store/ui/uiStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
-import { updateThemePreferenceCSR } from "@/services/themeClient";
+import { updateThemePreferenceCSR } from "@/services/api";
 import { publicSupportSettings } from "@/services/supportContent";
 import { toast } from "@/components/UI/notifications/toast";
 import type { ThemeMode } from "@/types/app";
@@ -63,6 +64,7 @@ export const Header = ({ categories, initialTheme }: HeaderProps) => {
   const compactSearchInputRef = useRef<HTMLInputElement | null>(null);
   const isCompactHeader = !isDesktop;
   const resolvedTheme = theme ?? initialTheme;
+  const debouncedSearchQuery = useDebounce(searchQuery, 600);
 
   const closeMobileMenu = () => {
     setIsMobileMenuOpen(false);
@@ -188,24 +190,17 @@ export const Header = ({ categories, initialTheme }: HeaderProps) => {
       return;
     }
 
-    const timeoutId = window.setTimeout(() => {
-      const normalized = searchQuery.trim();
+    const normalized = debouncedSearchQuery.trim();
+    const nextTarget = normalized
+      ? `/catalog?search=${encodeURIComponent(normalized)}`
+      : "/catalog";
 
-      const nextTarget = normalized
-        ? `/catalog?search=${encodeURIComponent(normalized)}`
-        : "/catalog";
+    if (isCompactHeader && normalized.length > 0) {
+      setIsSearchPanelOpen(false);
+    }
 
-      if (isCompactHeader && normalized.length > 0) {
-        setIsSearchPanelOpen(false);
-      }
-
-      router.replace(nextTarget);
-    }, 300);
-
-    return () => {
-      window.clearTimeout(timeoutId);
-    };
-  }, [isCompactHeader, isSearchDirty, router, searchQuery]);
+    router.replace(nextTarget);
+  }, [debouncedSearchQuery, isCompactHeader, isSearchDirty, router]);
 
   const displayName =
     currentUser?.firstName ?? currentUser?.email ?? "Користувач";
@@ -226,7 +221,7 @@ export const Header = ({ categories, initialTheme }: HeaderProps) => {
   };
 
   const handleSearchClear = () => {
-    setIsSearchDirty(true);
+    setIsSearchDirty(false);
     setSearchQuery("");
     router.replace("/catalog");
 
@@ -243,7 +238,9 @@ export const Header = ({ categories, initialTheme }: HeaderProps) => {
         <Container>
           <div className={styles.topBarInner}>
             <div className={styles.topBarLinks}>
-              <Link href="/catalog">Каталог</Link>
+              <Link href="/catalog" prefetch={false}>
+                Каталог
+              </Link>
               <Link href="/services">Послуги</Link>
               <Link href="/help">Допомога</Link>
               <Link href="/news">Новини</Link>

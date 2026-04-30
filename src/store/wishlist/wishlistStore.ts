@@ -1,10 +1,6 @@
 import { create } from "zustand";
 
-import {
-  addToWishlist,
-  getWishlist,
-  removeFromWishlist,
-} from "@/services/wishlistService";
+import { addToWishlist, getWishlist, removeFromWishlist } from "@/services/api";
 import { useAuthStore } from "@/store/auth/authStore";
 import type { AppProduct } from "@/types/app";
 
@@ -18,6 +14,7 @@ interface WishlistStore {
   items: WishlistItem[];
   wishlist: AppProduct[];
   isSyncing: boolean;
+  pendingProductIds: string[];
 
   hydrateGuestWishlist: () => void;
   setWishlist: (items: AppProduct[]) => void;
@@ -89,10 +86,39 @@ const setWishlistState = (
   });
 };
 
+const addPendingProductId = (
+  set: (
+    partial:
+      | Partial<WishlistStore>
+      | ((state: WishlistStore) => Partial<WishlistStore>)
+  ) => void,
+  productId: string
+) => {
+  set((state) => ({
+    pendingProductIds: state.pendingProductIds.includes(productId)
+      ? state.pendingProductIds
+      : [...state.pendingProductIds, productId],
+  }));
+};
+
+const removePendingProductId = (
+  set: (
+    partial:
+      | Partial<WishlistStore>
+      | ((state: WishlistStore) => Partial<WishlistStore>)
+  ) => void,
+  productId: string
+) => {
+  set((state) => ({
+    pendingProductIds: state.pendingProductIds.filter((id) => id !== productId),
+  }));
+};
+
 export const useWishlistStore = create<WishlistStore>((set, get) => ({
   items: [],
   wishlist: [],
   isSyncing: false,
+  pendingProductIds: [],
   hydrateGuestWishlist: () => {
     if (useAuthStore.getState().isAuthenticated) {
       return;
@@ -143,15 +169,22 @@ export const useWishlistStore = create<WishlistStore>((set, get) => ({
       return;
     }
 
+    addPendingProductId(set, product.id);
     set({ isSyncing: true });
 
+    const previousItems = get().items;
+    const optimisticItems = previousItems.some((item) => item.id === product.id)
+      ? previousItems
+      : [...previousItems, normalizeWishlistItem(product)];
+    setWishlistState(set, optimisticItems);
+
     try {
-      const serverWishlist = await addToWishlist(product.id);
-      setWishlistState(
-        set,
-        serverWishlist.items.map((item) => normalizeWishlistItem(item))
-      );
+      await addToWishlist(product.id);
+    } catch (error) {
+      setWishlistState(set, previousItems);
+      throw error;
     } finally {
+      removePendingProductId(set, product.id);
       set({ isSyncing: false });
     }
   },
@@ -163,15 +196,22 @@ export const useWishlistStore = create<WishlistStore>((set, get) => ({
       return;
     }
 
+    addPendingProductId(set, productId);
     set({ isSyncing: true });
 
+    const previousItems = get().items;
+    const optimisticItems = previousItems.filter(
+      (item) => item.id !== productId
+    );
+    setWishlistState(set, optimisticItems);
+
     try {
-      const serverWishlist = await removeFromWishlist(productId);
-      setWishlistState(
-        set,
-        serverWishlist.items.map((item) => normalizeWishlistItem(item))
-      );
+      await removeFromWishlist(productId);
+    } catch (error) {
+      setWishlistState(set, previousItems);
+      throw error;
     } finally {
+      removePendingProductId(set, productId);
       set({ isSyncing: false });
     }
   },
@@ -230,6 +270,7 @@ export const useWishlistStore = create<WishlistStore>((set, get) => ({
   },
   resetState: () => {
     clearGuestWishlistStorage();
+    set({ pendingProductIds: [] });
     setWishlistState(set, []);
   },
 }));

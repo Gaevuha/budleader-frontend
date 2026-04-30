@@ -1,14 +1,13 @@
 "use client";
 
 import { ChevronDown, X } from "lucide-react";
-import { useState } from "react";
+import { useId, useState } from "react";
 
 import styles from "@/components/catalog/Catalog.module.css";
 
 interface CatalogFiltersProps {
   brands: string[];
   brandCounts: Record<string, number>;
-  isDesktop: boolean;
   isOpen: boolean;
   selectedBrands: string[];
   onToggleBrand: (brand: string) => void;
@@ -34,7 +33,6 @@ interface CatalogFiltersProps {
 export function CatalogFilters({
   brands,
   brandCounts,
-  isDesktop,
   isOpen,
   selectedBrands,
   onToggleBrand,
@@ -56,6 +54,13 @@ export function CatalogFilters({
   onClose,
   onReset,
 }: CatalogFiltersProps) {
+  const filtersTitleId = useId();
+  const pricePanelId = useId();
+  const availabilityPanelId = useId();
+  const brandPanelId = useId();
+  const specialPanelId = useId();
+  const minPriceInputId = useId();
+  const maxPriceInputId = useId();
   const [opened, setOpened] = useState<string[]>([
     "price",
     "availability",
@@ -71,7 +76,7 @@ export function CatalogFilters({
 
   return (
     <>
-      {!isDesktop && isOpen ? (
+      {isOpen ? (
         <button
           type="button"
           className={styles.overlay}
@@ -82,25 +87,21 @@ export function CatalogFilters({
 
       <aside
         id="catalog-filters"
-        className={`${styles.sidebar} ${
-          isOpen || isDesktop ? styles.sidebarOpen : ""
-        }`}
-        role={!isDesktop ? "dialog" : undefined}
-        aria-modal={!isDesktop ? "true" : undefined}
-        aria-label="Фільтри каталогу"
+        className={`${styles.sidebar} ${isOpen ? styles.sidebarOpen : ""}`}
+        role={isOpen ? "dialog" : undefined}
+        aria-modal={isOpen ? "true" : undefined}
+        aria-labelledby={filtersTitleId}
       >
         <div className={styles.sidebarHeader}>
-          <h3>Фільтри</h3>
-          {!isDesktop ? (
-            <button
-              type="button"
-              className={styles.closeFiltersBtn}
-              onClick={onClose}
-              aria-label="Закрити фільтри"
-            >
-              <X size={18} />
-            </button>
-          ) : null}
+          <h3 id={filtersTitleId}>Фільтри</h3>
+          <button
+            type="button"
+            className={styles.closeFiltersBtn}
+            onClick={onClose}
+            aria-label="Закрити фільтри"
+          >
+            <X size={18} aria-hidden="true" />
+          </button>
         </div>
 
         <div className={styles.filterAccordionList}>
@@ -109,6 +110,8 @@ export function CatalogFilters({
               type="button"
               className={styles.filterHeader}
               onClick={() => toggle("price")}
+              aria-expanded={opened.includes("price")}
+              aria-controls={pricePanelId}
             >
               Ціна, грн
               <ChevronDown
@@ -116,12 +119,20 @@ export function CatalogFilters({
                 className={`${styles.chevron} ${
                   opened.includes("price") ? styles.open : ""
                 }`}
+                aria-hidden="true"
               />
             </button>
             {opened.includes("price") && (
-              <div className={styles.filterBody}>
+              <div id={pricePanelId} className={styles.filterBody}>
                 <div className={styles.priceInputs}>
+                  <label
+                    htmlFor={minPriceInputId}
+                    className={styles.visuallyHidden}
+                  >
+                    Мінімальна ціна
+                  </label>
                   <input
+                    id={minPriceInputId}
                     className={styles.priceInput}
                     type="number"
                     min={0}
@@ -133,7 +144,14 @@ export function CatalogFilters({
                     value={minPrice}
                     onChange={(event) => onMinPriceChange(event.target.value)}
                   />
+                  <label
+                    htmlFor={maxPriceInputId}
+                    className={styles.visuallyHidden}
+                  >
+                    Максимальна ціна
+                  </label>
                   <input
+                    id={maxPriceInputId}
                     className={styles.priceInput}
                     type="number"
                     min={0}
@@ -155,6 +173,8 @@ export function CatalogFilters({
               type="button"
               className={styles.filterHeader}
               onClick={() => toggle("availability")}
+              aria-expanded={opened.includes("availability")}
+              aria-controls={availabilityPanelId}
             >
               Наявність
               <ChevronDown
@@ -162,10 +182,11 @@ export function CatalogFilters({
                 className={`${styles.chevron} ${
                   opened.includes("availability") ? styles.open : ""
                 }`}
+                aria-hidden="true"
               />
             </button>
             {opened.includes("availability") && (
-              <div className={styles.filterBody}>
+              <div id={availabilityPanelId} className={styles.filterBody}>
                 <label className={styles.checkboxRow}>
                   <input
                     type="checkbox"
@@ -186,6 +207,8 @@ export function CatalogFilters({
               type="button"
               className={styles.filterHeader}
               onClick={() => toggle("brand")}
+              aria-expanded={opened.includes("brand")}
+              aria-controls={brandPanelId}
             >
               Бренд
               <ChevronDown
@@ -193,10 +216,11 @@ export function CatalogFilters({
                 className={`${styles.chevron} ${
                   opened.includes("brand") ? styles.open : ""
                 }`}
+                aria-hidden="true"
               />
             </button>
             {opened.includes("brand") && (
-              <div className={styles.filterBody}>
+              <div id={brandPanelId} className={styles.filterBody}>
                 {brands.length > 0 ? (
                   brands.map((brand) => (
                     <label key={brand} className={styles.checkboxRow}>
@@ -225,6 +249,8 @@ export function CatalogFilters({
               type="button"
               className={styles.filterHeader}
               onClick={() => toggle("special")}
+              aria-expanded={opened.includes("special")}
+              aria-controls={specialPanelId}
             >
               Спеціальні пропозиції
               <ChevronDown
@@ -232,10 +258,11 @@ export function CatalogFilters({
                 className={`${styles.chevron} ${
                   opened.includes("special") ? styles.open : ""
                 }`}
+                aria-hidden="true"
               />
             </button>
             {opened.includes("special") && (
-              <div className={styles.filterBody}>
+              <div id={specialPanelId} className={styles.filterBody}>
                 <label className={styles.checkboxRow}>
                   <input
                     type="checkbox"
@@ -263,11 +290,9 @@ export function CatalogFilters({
           <button type="button" className={styles.clearBtn} onClick={onReset}>
             Очистити
           </button>
-          {!isDesktop ? (
-            <button type="button" className={styles.applyBtn} onClick={onClose}>
-              Показати товари
-            </button>
-          ) : null}
+          <button type="button" className={styles.applyBtn} onClick={onClose}>
+            Показати товари
+          </button>
         </div>
       </aside>
     </>

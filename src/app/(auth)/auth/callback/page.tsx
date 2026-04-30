@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useRouter, useSearchParams } from "next/navigation";
 
@@ -10,12 +10,8 @@ import { CART_QUERY_KEY } from "@/queries/cartQueries";
 import { USER_QUERY_KEY } from "@/queries/authQueries";
 import { WISHLIST_QUERY_KEY } from "@/queries/wishlistQueries";
 import { publishAuthEvent } from "@/services/authBroadcast";
-import {
-  resetCommerceRequestCache,
-  resetCurrentUserRequestCache,
-} from "@/services/apiClient";
+import { getCurrentUser } from "@/services/api";
 import { resolvePostAuthRedirectPath } from "@/services/authRedirect";
-import { getCurrentUser } from "@/services/authService";
 
 const OAUTH_ERROR_REDIRECT = "/login?oauth=error";
 const SUCCESS_REDIRECT_DELAY_MS = 2800;
@@ -30,7 +26,7 @@ interface CallbackStatusState {
   message: string;
 }
 
-export default function AuthCallbackPage() {
+function AuthCallbackContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
@@ -58,9 +54,6 @@ export default function AuthCallbackPage() {
       const requestedPath = searchParams.get("next");
 
       try {
-        resetCurrentUserRequestCache();
-        resetCommerceRequestCache();
-
         const user = await getCurrentUser();
 
         if (!user) {
@@ -175,5 +168,45 @@ export default function AuthCallbackPage() {
         </p>
       </section>
     </Container>
+  );
+}
+
+function AuthCallbackFallback() {
+  return (
+    <Container>
+      <section
+        style={{
+          minHeight: "18vh",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+        }}
+      >
+        <p
+          aria-live="polite"
+          style={{
+            position: "absolute",
+            width: "1px",
+            height: "1px",
+            padding: 0,
+            margin: "-1px",
+            overflow: "hidden",
+            clip: "rect(0, 0, 0, 0)",
+            whiteSpace: "nowrap",
+            border: 0,
+          }}
+        >
+          Авторизація через Google-акаунт...
+        </p>
+      </section>
+    </Container>
+  );
+}
+
+export default function AuthCallbackPage() {
+  return (
+    <Suspense fallback={<AuthCallbackFallback />}>
+      <AuthCallbackContent />
+    </Suspense>
   );
 }

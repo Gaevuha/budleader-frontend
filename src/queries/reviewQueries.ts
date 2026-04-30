@@ -2,8 +2,10 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { getProductReviewsCSR } from "@/services/apiClient";
-import type { ProductReviewsResult } from "@/services/apiClient";
+import {
+  getProductReviewsCSR,
+  type ProductReviewsResult,
+} from "@/services/api";
 
 export const productReviewsQueryKey = (productId: string) =>
   ["product-reviews", productId] as const;

@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { cookies } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import Script from "next/script";
 import "./globals.css";
@@ -10,7 +9,6 @@ import { getCategories, getUser } from "@/services/apiServer";
 import {
   buildGuestThemeBootstrapScript,
   DEFAULT_THEME_MODE,
-  resolveThemeFromCookieHeader,
 } from "@/services/themePreference";
 import type { Category } from "@/types/category";
 
@@ -24,9 +22,23 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const metadataBase = new URL(
-  process.env.NEXT_PUBLIC_SITE_URL ?? "http://localhost:3000"
-);
+const resolveMetadataBaseUrl = (): URL => {
+  const rawUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ??
+    process.env.VERCEL_BRANCH_URL ??
+    process.env.VERCEL_URL ??
+    "http://localhost:3000";
+
+  const normalizedUrl = /^https?:\/\//i.test(rawUrl)
+    ? rawUrl
+    : `https://${rawUrl}`;
+
+  return new URL(normalizedUrl);
+};
+
+const metadataBase = resolveMetadataBaseUrl();
 
 const socialDescription =
   "Каталог будівельних матеріалів та послуг для ремонту, комплектації і доставки.";
@@ -84,31 +96,24 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const cookieStore = await cookies();
-  const [categories, currentUser] = await Promise.all([
-    getCategories(),
+  const initialTheme = DEFAULT_THEME_MODE;
+  const [initialUser, layoutCategories] = await Promise.all([
     getUser(),
+    getCategories(),
   ]);
-  const guestTheme =
-    resolveThemeFromCookieHeader(cookieStore.toString()) ?? DEFAULT_THEME_MODE;
-  const initialTheme = currentUser
-    ? currentUser.theme ?? DEFAULT_THEME_MODE
-    : guestTheme;
-  const resolvedCategories =
-    categories.length === 0 ? staticLayoutCategories : categories;
+  const resolvedLayoutCategories =
+    layoutCategories.length > 0 ? layoutCategories : staticLayoutCategories;
 
   return (
     <html lang="uk" data-theme={initialTheme} suppressHydrationWarning>
       <body className={`${geistSans.variable} ${geistMono.variable}`}>
-        {!currentUser ? (
-          <Script id="theme-bootstrap" strategy="beforeInteractive">
-            {buildGuestThemeBootstrapScript(initialTheme)}
-          </Script>
-        ) : null}
-        <Providers initialTheme={initialTheme} initialUser={currentUser}>
-          <AuthProvider initialUser={currentUser}>
+        <Script id="theme-bootstrap" strategy="beforeInteractive">
+          {buildGuestThemeBootstrapScript(initialTheme)}
+        </Script>
+        <Providers initialTheme={initialTheme} initialUser={initialUser}>
+          <AuthProvider initialUser={initialUser}>
             <AppChrome
-              categories={resolvedCategories}
+              categories={resolvedLayoutCategories}
               initialTheme={initialTheme}
             >
               {children}

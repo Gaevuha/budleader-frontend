@@ -8,7 +8,7 @@ import {
 } from "@tanstack/react-query";
 
 import { useDebounce } from "@/hooks/useDebounce";
-import { fetchProducts } from "@/services/apiClient";
+import { fetchProducts } from "@/services/api";
 import { useProductsListStore } from "@/store/ui/productsListStore";
 
 const PRODUCTS_LIMIT = 12;

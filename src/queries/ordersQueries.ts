@@ -2,7 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 
-import { getOrdersCSR } from "@/services/apiClient";
+import { getOrdersCSR } from "@/services/api";
 
 export const ORDERS_QUERY_KEY = ["orders"] as const;
 

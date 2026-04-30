@@ -51,17 +51,17 @@ export const Footer = () => {
             <h3 className={styles.title}>Контакти</h3>
             <ul className={styles.list}>
               <li>
-                <a href={phoneHref} className={styles.contactLink}>
+                <Link href={phoneHref} className={styles.contactLink}>
                   {publicSupportSettings.contactPhone}
-                </a>
+                </Link>
               </li>
               <li>
-                <a
+                <Link
                   href={`mailto:${publicSupportSettings.notificationEmail}`}
                   className={styles.contactLink}
                 >
                   {publicSupportSettings.notificationEmail}
-                </a>
+                </Link>
               </li>
               <li className={styles.text}>
                 {publicSupportSettings.officeAddress}

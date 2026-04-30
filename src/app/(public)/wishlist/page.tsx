@@ -5,7 +5,7 @@ import { Heart } from "lucide-react";
 import { motion } from "framer-motion";
 
 import { Container } from "@/components/layout/Container/Container";
-import { ProductCard } from "@/components/product/ProductCard/ProductCard";
+import { ConnectedProductCard } from "@/components/product/ProductCard/ConnectedProductCard";
 import { useUser } from "@/queries/authQueries";
 import { useWishlistQuery } from "@/queries/wishlistQueries";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
@@ -16,10 +16,9 @@ const WishlistPage = () => {
   const { data: currentUser } = useUser();
   const isAuthenticated = Boolean(currentUser);
   const wishlistQuery = useWishlistQuery(isAuthenticated);
-
-  const wishlist = isAuthenticated
-    ? wishlistQuery.data?.items ?? []
-    : localWishlist;
+  const wishlist = localWishlist;
+  const isInitialLoading =
+    isAuthenticated && wishlistQuery.isLoading && localWishlist.length === 0;
 
   return (
     <section>
@@ -29,7 +28,7 @@ const WishlistPage = () => {
           <span className={styles.count}>{wishlist.length} товарів</span>
         </div>
 
-        {wishlist.length === 0 ? (
+        {isInitialLoading ? null : wishlist.length === 0 ? (
           <div className={styles.empty}>
             <Heart size={64} className={styles.emptyIcon} />
             <h2>Ваш список бажань порожній</h2>
@@ -40,7 +39,7 @@ const WishlistPage = () => {
           </div>
         ) : (
           <ul className={styles.grid}>
-            {wishlist.map((product) => (
+            {wishlist.map((product, index) => (
               <motion.li
                 key={product.id}
                 className={styles.gridItem}
@@ -48,7 +47,10 @@ const WishlistPage = () => {
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, scale: 0.9 }}
               >
-                <ProductCard product={product} />
+                <ConnectedProductCard
+                  product={product}
+                  prioritizeImage={index === 0}
+                />
               </motion.li>
             ))}
           </ul>

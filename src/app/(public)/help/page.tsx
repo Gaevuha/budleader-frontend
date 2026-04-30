@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Suspense } from "react";
 import {
   CircleHelp,
   ClipboardList,
@@ -20,6 +21,19 @@ import {
   supportChannels,
 } from "@/services/supportContent";
 import styles from "./HelpPage.module.css";
+
+function HelpFaqFallback() {
+  return (
+    <div className={styles.faqSearchLayout} aria-hidden="true">
+      <div className={styles.faqToolbar}>
+        <div className={styles.faqSearchLabel}>Пошук по FAQ</div>
+        <div className={styles.faqSearchField}>
+          <div className={styles.faqSearchInput} />
+        </div>
+      </div>
+    </div>
+  );
+}
 
 const channelIcons = {
   consultation: MessageCircle,
@@ -56,32 +70,32 @@ export default function HelpPage() {
 
               <ul className={styles.heroPills}>
                 <li>
-                  <a href="#support-channels" className="brand-pill">
+                  <Link href="#support-channels" className="brand-pill">
                     Підбір товарів
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#help-flow" className="brand-pill">
+                  <Link href="#help-flow" className="brand-pill">
                     Статус замовлення
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a href="#faq" className="brand-pill">
+                  <Link href="#faq" className="brand-pill">
                     Доставка і самовивіз
-                  </a>
+                  </Link>
                 </li>
               </ul>
 
               <div className={styles.heroActions}>
-                <a href={helpPhoneHref} className="brand-button">
+                <Link href={helpPhoneHref} className="brand-button">
                   Отримати допомогу зараз
-                </a>
-                <a
+                </Link>
+                <Link
                   href={`mailto:${publicSupportSettings.notificationEmail}`}
                   className="brand-button-secondary"
                 >
                   Написати менеджеру
-                </a>
+                </Link>
               </div>
             </div>
 
@@ -164,12 +178,12 @@ export default function HelpPage() {
                       {channel.actionLabel}
                     </Link>
                   ) : (
-                    <a
+                    <Link
                       href={channel.actionHref}
                       className="brand-button-secondary"
                     >
                       {channel.actionLabel}
-                    </a>
+                    </Link>
                   )}
                 </li>
               );
@@ -250,15 +264,15 @@ export default function HelpPage() {
               </ul>
 
               <div className={styles.policyActions}>
-                <a
+                <Link
                   href="#faq-delivery-payment"
                   className="brand-button-secondary"
                 >
                   Доставка і оплата
-                </a>
-                <a href="#faq-returns" className="brand-button-secondary">
+                </Link>
+                <Link href="#faq-returns" className="brand-button-secondary">
                   Повернення товару
-                </a>
+                </Link>
               </div>
             </div>
           </div>
@@ -284,7 +298,9 @@ export default function HelpPage() {
               </div>
             </div>
 
-            <HelpFaq items={helpFaqItems} />
+            <Suspense fallback={<HelpFaqFallback />}>
+              <HelpFaq items={helpFaqItems} />
+            </Suspense>
           </div>
         </Container>
       </section>

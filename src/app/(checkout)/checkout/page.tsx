@@ -9,7 +9,7 @@ import { Container } from "@/components/layout/Container/Container";
 import { Button } from "@/components/UI/Button/Button";
 import { useUser } from "@/queries/authQueries";
 import { CART_QUERY_KEY } from "@/queries/cartQueries";
-import { createOrderCSR } from "@/services/apiClient";
+import { createOrderCSR } from "@/services/api";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
 import styles from "./Checkout.module.css";

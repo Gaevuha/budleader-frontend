@@ -99,9 +99,12 @@ export default function AboutPage() {
                   <Link href="/catalog" className="brand-button">
                     Перейти в каталог
                   </Link>
-                  <a href={contactPhoneHref} className="brand-button-secondary">
+                  <Link
+                    href={contactPhoneHref}
+                    className="brand-button-secondary"
+                  >
                     Зателефонувати менеджеру
-                  </a>
+                  </Link>
                 </div>
               </div>
 
@@ -235,19 +238,19 @@ export default function AboutPage() {
                 <div className={styles.contactItem}>
                   <dt className={styles.contactLabel}>Телефон</dt>
                   <dd className={styles.contactValue}>
-                    <a href={contactPhoneHref}>
+                    <Link href={contactPhoneHref}>
                       {publicSupportSettings.contactPhone}
-                    </a>
+                    </Link>
                   </dd>
                 </div>
                 <div className={styles.contactItem}>
                   <dt className={styles.contactLabel}>Email</dt>
                   <dd className={styles.contactValue}>
-                    <a
+                    <Link
                       href={`mailto:${publicSupportSettings.notificationEmail}`}
                     >
                       {publicSupportSettings.notificationEmail}
-                    </a>
+                    </Link>
                   </dd>
                 </div>
                 <div className={styles.contactItem}>

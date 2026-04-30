@@ -6,7 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { toast } from "@/components/UI/notifications/toast";
 import { usePathname, useRouter } from "next/navigation";
 import styles from "./AuthModal.module.css";
-import { GoogleLoginButton } from "@/components/GoogleLoginButton";
+import { OAuthLoginButton } from "@/components/OAuthLoginButton";
 
 import {
   useForgotPassword,
@@ -323,9 +323,14 @@ export const AuthModal = () => {
             <div className={styles.oauthSection}>
               <p className={styles.helperText}>Або продовжити через</p>
               <div className={styles.oauthButtons}>
-                <GoogleLoginButton className={styles.oauthButton}>
-                  Google
-                </GoogleLoginButton>
+                <OAuthLoginButton
+                  provider="google"
+                  className={styles.oauthButton}
+                />
+                <OAuthLoginButton
+                  provider="facebook"
+                  className={styles.oauthButton}
+                />
               </div>
             </div>
           ) : null}

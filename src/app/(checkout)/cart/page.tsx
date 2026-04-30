@@ -78,6 +78,9 @@ export default function CartPage() {
   const clearCart = useCartStore((state) => state.clearCart);
   const updateQuantity = useCartStore((state) => state.updateQuantity);
   const cartIsSyncing = useCartStore((state) => state.isSyncing);
+  const pendingCartProductIds = useCartStore(
+    (state) => state.pendingProductIds
+  );
 
   const cartQuery = useCartQuery(isAuthenticated);
 
@@ -113,6 +116,13 @@ export default function CartPage() {
       return;
     }
 
+    if (
+      pendingCartProductIds.includes(productId) ||
+      pendingProductId === productId
+    ) {
+      return;
+    }
+
     setPendingProductId(productId);
 
     try {
@@ -128,6 +138,13 @@ export default function CartPage() {
     item: CartViewItem,
     operation: "inc" | "dec"
   ) => {
+    if (
+      pendingCartProductIds.includes(item.productId) ||
+      pendingProductId === item.productId
+    ) {
+      return;
+    }
+
     if (
       operation === "inc" &&
       item.availableStock !== null &&
@@ -229,6 +246,9 @@ export default function CartPage() {
             const isIncreaseDisabled =
               item.availableStock !== null &&
               item.quantity >= item.availableStock;
+            const isItemPending =
+              pendingCartProductIds.includes(item.productId) ||
+              pendingProductId === item.productId;
 
             return (
               <li key={item.productId} className={styles.cartItem}>
@@ -269,9 +289,6 @@ export default function CartPage() {
                   <button
                     type="button"
                     className={styles.qtyBtn}
-                    disabled={
-                      cartIsSyncing || pendingProductId === item.productId
-                    }
                     onClick={() => void handleChangeQuantity(item, "dec")}
                   >
                     -
@@ -280,11 +297,7 @@ export default function CartPage() {
                   <button
                     type="button"
                     className={styles.qtyBtn}
-                    disabled={
-                      isIncreaseDisabled ||
-                      cartIsSyncing ||
-                      pendingProductId === item.productId
-                    }
+                    disabled={isIncreaseDisabled}
                     onClick={() => void handleChangeQuantity(item, "inc")}
                     title={
                       isIncreaseDisabled
@@ -303,9 +316,7 @@ export default function CartPage() {
                 <button
                   type="button"
                   className={styles.removeBtn}
-                  disabled={
-                    cartIsSyncing || pendingProductId === item.productId
-                  }
+                  disabled={isItemPending}
                   onClick={() => void handleRemoveItem(item.productId)}
                 >
                   x

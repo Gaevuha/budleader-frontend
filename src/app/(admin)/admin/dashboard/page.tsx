@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Package, ShoppingCart, Users, TrendingUp } from "lucide-react";
 
-import { apiFetch } from "@/services/api";
+import { apiClient } from "@/services/apiClient";
 import type { AdminOrder, DashboardStat } from "@/types/dashboard";
 import styles from "./Dashboard.module.css";
 
@@ -96,7 +96,9 @@ const fetchAdminDashboard = async (): Promise<DashboardPayload> => {
   }
 
   if (!adminDashboardRequest) {
-    adminDashboardRequest = apiFetch<DashboardPayload>("/api/admin/stats")
+    adminDashboardRequest = apiClient
+      .get<DashboardPayload>("/api/admin/stats")
+      .then((response) => response.data)
       .then((payload) => {
         adminDashboardSnapshot = payload;
         return payload;

@@ -67,17 +67,17 @@ export default function ContactsPage() {
               </p>
               <ul className={styles.heroActions}>
                 <li>
-                  <a href={primaryPhoneHref} className="brand-button">
+                  <Link href={primaryPhoneHref} className="brand-button">
                     Зателефонувати
-                  </a>
+                  </Link>
                 </li>
                 <li>
-                  <a
+                  <Link
                     href={`mailto:${publicSupportSettings.notificationEmail}`}
                     className="brand-button-secondary"
                   >
                     Написати на email
-                  </a>
+                  </Link>
                 </li>
               </ul>
             </header>
