@@ -532,7 +532,7 @@ const getStructuredCartItems = (payload: unknown): unknown[] | null => {
   }
 
   return null;
-
+}
 
 const hasCartPayload = (payload: unknown): boolean => {
   return getStructuredCartItems(payload) !== null;
