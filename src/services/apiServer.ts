@@ -19,8 +19,17 @@ import type { User } from "@/types/auth";
 import type { Category, CategoriesData } from "@/types/category";
 import type { Product } from "@/types/product";
 
-const DEFAULT_APP_URL =
-  process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
+const DEFAULT_APP_URL = (() => {
+  const rawUrl =
+    process.env.NEXT_PUBLIC_SITE_URL ??
+    process.env.NEXT_PUBLIC_APP_URL ??
+    process.env.VERCEL_PROJECT_PRODUCTION_URL ??
+    process.env.VERCEL_BRANCH_URL ??
+    process.env.VERCEL_URL ??
+    "http://localhost:3000";
+
+  return /^https?:\/\//i.test(rawUrl) ? rawUrl : `https://${rawUrl}`;
+})();
 const API_TIMEOUT_MS = 15_000;
 const AUTH_ENDPOINT_PREFIX = "/api/auth";
 const API_PROXY_PREFIX = "/api/proxy";
@@ -279,9 +288,10 @@ export const createApiServer = async (options?: {
   return instance;
 };
 
-const createPublicProxyApiServer = (): AxiosInstance => {
+const createPublicProxyApiServer = async (): Promise<AxiosInstance> => {
+  const origin = await resolveServerOrigin();
   const instance = axios.create({
-    baseURL: DEFAULT_APP_URL,
+    baseURL: origin,
     timeout: API_TIMEOUT_MS,
     headers: {
       Accept: "application/json",
@@ -594,7 +604,7 @@ export async function getProductsSSR(params?: {
 
   const request = (async () => {
     try {
-      const serverApi = createPublicProxyApiServer();
+      const serverApi = await createPublicProxyApiServer();
       const response = await serverApi.get<
         ApiResponse<ProductEnvelope> | ProductEnvelope
       >(ENDPOINTS.PRODUCTS, {
@@ -650,7 +660,7 @@ export async function getProductsSSR(params?: {
 
 export async function getProductByIdSSR(id: string): Promise<Product | null> {
   try {
-    const serverApi = createPublicProxyApiServer();
+    const serverApi = await createPublicProxyApiServer();
     const response = await serverApi.get<
       ApiResponse<ProductEnvelope> | ProductEnvelope
     >(`${ENDPOINTS.PRODUCTS}/${id}`);
@@ -678,7 +688,7 @@ export async function getCategories(): Promise<Category[]> {
 
   const request = (async () => {
     try {
-      const serverApi = createPublicProxyApiServer();
+      const serverApi = await createPublicProxyApiServer();
       try {
         const megaMenuResponse = await serverApi.get<unknown>(
           `${ENDPOINTS.CATEGORIES}/mega-menu`
