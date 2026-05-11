@@ -114,7 +114,7 @@
     min-height: 100vh;
     display: flex;
     flex-direction: column;
-    font-family: "Inter", sans-serif;
+    font-family: var(--font-geist-sans), system-ui, sans-serif;
     color: var(--foreground);
 
     background: radial-gradient(

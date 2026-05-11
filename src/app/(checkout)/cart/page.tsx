@@ -1,14 +1,21 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import {
+  clearCartAction,
+  removeFromCartAction,
+  updateCartItemAction,
+} from "@/actions/commerceActions";
 import { Container } from "@/components/layout/Container/Container";
 import { Button } from "@/components/UI/Button/Button";
 import { useUser } from "@/queries/authQueries";
 import { useCartQuery } from "@/queries/cartQueries";
+import { CART_QUERY_KEY } from "@/queries/queryKeys";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
 import { PRODUCT_PLACEHOLDER_SRC, resolveMediaUrl } from "@/utils/media";
@@ -66,6 +73,7 @@ const resolveCartProductId = <
 
 export default function CartPage() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const openAuthModal = useAuthModalStore((state) => state.open);
   const [pendingProductId, setPendingProductId] = useState<string | null>(null);
   const [isClearPending, setIsClearPending] = useState(false);
@@ -74,9 +82,19 @@ export default function CartPage() {
   const isAuthenticated = Boolean(currentUser);
 
   const cartItems = useCartStore((state) => state.cart);
-  const removeCartItem = useCartStore((state) => state.removeFromCart);
-  const clearCart = useCartStore((state) => state.clearCart);
-  const updateQuantity = useCartStore((state) => state.updateQuantity);
+  const removeOptimisticItem = useCartStore(
+    (state) => state.removeOptimisticItem
+  );
+  const clearLocalCart = useCartStore((state) => state.clearCart);
+  const setOptimisticQuantity = useCartStore(
+    (state) => state.setOptimisticQuantity
+  );
+  const replaceWithServerCart = useCartStore(
+    (state) => state.replaceWithServerCart
+  );
+  const setCart = useCartStore((state) => state.setCart);
+  const setCartPending = useCartStore((state) => state.setPending);
+  const setCartSyncing = useCartStore((state) => state.setSyncing);
   const cartIsSyncing = useCartStore((state) => state.isSyncing);
   const pendingCartProductIds = useCartStore(
     (state) => state.pendingProductIds
@@ -124,10 +142,22 @@ export default function CartPage() {
     }
 
     setPendingProductId(productId);
+    setCartPending(productId, true);
+
+    const previousItems = useCartStore.getState().cart;
+    removeOptimisticItem(productId);
 
     try {
-      await removeCartItem(productId);
+      if (isAuthenticated) {
+        const serverCart = await removeFromCartAction(productId);
+
+        queryClient.setQueryData(CART_QUERY_KEY, serverCart);
+        replaceWithServerCart(serverCart);
+      }
+    } catch {
+      setCart(previousItems);
     } finally {
+      setCartPending(productId, false);
       setPendingProductId((current) =>
         current === productId ? null : current
       );
@@ -161,10 +191,25 @@ export default function CartPage() {
     }
 
     setPendingProductId(item.productId);
+    setCartPending(item.productId, true);
+
+    const previousItems = useCartStore.getState().cart;
+    setOptimisticQuantity(item.productId, nextQuantity);
 
     try {
-      await updateQuantity(item.productId, nextQuantity);
+      if (isAuthenticated) {
+        const serverCart =
+          nextQuantity <= 0
+            ? await removeFromCartAction(item.productId)
+            : await updateCartItemAction(item.productId, nextQuantity);
+
+        queryClient.setQueryData(CART_QUERY_KEY, serverCart);
+        replaceWithServerCart(serverCart);
+      }
+    } catch {
+      setCart(previousItems);
     } finally {
+      setCartPending(item.productId, false);
       setPendingProductId((current) =>
         current === item.productId ? null : current
       );
@@ -173,11 +218,24 @@ export default function CartPage() {
 
   const handleClear = async () => {
     setIsClearPending(true);
+    setCartSyncing(true);
+
+    const previousItems = useCartStore.getState().cart;
+
+    await clearLocalCart();
 
     try {
-      await clearCart();
+      if (isAuthenticated) {
+        const serverCart = await clearCartAction();
+
+        queryClient.setQueryData(CART_QUERY_KEY, serverCart);
+        replaceWithServerCart(serverCart);
+      }
+    } catch {
+      setCart(previousItems);
     } finally {
       setIsClearPending(false);
+      setCartSyncing(false);
     }
   };
 

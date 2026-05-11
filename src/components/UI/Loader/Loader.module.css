@@ -3,9 +3,11 @@
 .loader {
   display: block;
   position: relative;
-  top: 45px;
-  width: 75px; /*85*/
-  height: 16px; /**50*/
+  top: 0;
+  width: 115px;
+  min-width: 115px;
+  height: 32px;
+  min-height: 32px;
   margin: 0 auto;
   background-repeat: no-repeat;
   background-image: linear-gradient(var(--primary) 50px, transparent 0),
@@ -46,9 +48,5 @@
     background-size: 10px 3px, 10px 3px, 10px 3px, 10px 10px, 10px 30px,
       10px 50px;
   }
-}
-.loader {
-  /* top: 150; */
-  width: 115px;
-  height: 32px;
+  contain: layout paint;
 }

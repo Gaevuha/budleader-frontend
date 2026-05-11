@@ -22,19 +22,16 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 
-import type { AppProduct } from "@/types/app";
 import type { Category, CategorySubcategoryLink } from "@/types/category";
 import styles from "@/app/page.module.css";
 
 interface CategoriesListProps {
   categories: Category[];
-  products: AppProduct[];
+  fallbackSubmenuByCategory: Record<
+    string,
+    Array<{ id: string; name: string }>
+  >;
   isExpanded: boolean;
-}
-
-interface CategoryProductLink {
-  id: string;
-  name: string;
 }
 
 const COLLAPSED_CATEGORY_COUNT = 14;
@@ -84,54 +81,14 @@ const pickCategoryIcon = (name: string): LucideIcon => {
   return LayoutGrid;
 };
 
-const buildFallbackSubmenu = (
-  categories: Category[],
-  products: AppProduct[]
-): Record<string, CategoryProductLink[]> => {
-  const byCategoryId: Record<string, CategoryProductLink[]> = {};
-
-  categories.forEach((category) => {
-    const target = [category.id, category.slug, category.name]
-      .filter((value): value is string => Boolean(value))
-      .map((value) => value.toLowerCase());
-
-    const names = products
-      .filter((product) => {
-        const productCategory = [
-          product.category,
-          product.categoryName,
-          (product as { category?: { name?: string } }).category?.name,
-        ]
-          .filter((value): value is string => Boolean(value))
-          .map((value) => value.toLowerCase());
-
-        return productCategory.some((value) => target.includes(value));
-      })
-      .map((product) => ({
-        id: product.id,
-        name: product.name,
-      }))
-      .filter(
-        (item, index, arr) =>
-          arr.findIndex((entry) => entry.id === item.id) === index
-      )
-      .slice(0, 18);
-
-    byCategoryId[category.id] = names;
-  });
-
-  return byCategoryId;
-};
-
 export function CategoriesList({
   categories,
-  products,
+  fallbackSubmenuByCategory,
   isExpanded,
 }: CategoriesListProps) {
   const visibleCategories = isExpanded
     ? categories
     : categories.slice(0, COLLAPSED_CATEGORY_COUNT);
-  const fallbackSubmenuByCategory = buildFallbackSubmenu(categories, products);
 
   return (
     <aside

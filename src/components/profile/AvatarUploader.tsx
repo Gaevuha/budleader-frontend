@@ -1,9 +1,11 @@
 "use client";
 
 import Image from "next/image";
-import { useId } from "react";
+import { useEffect, useId, useState } from "react";
 
 import styles from "./Profile.module.css";
+
+const failedAvatarUrls = new Set<string>();
 
 interface AvatarUploaderProps {
   currentAvatarUrl?: string;
@@ -34,18 +36,31 @@ export function AvatarUploader({
 }: AvatarUploaderProps) {
   const inputId = useId();
   const avatarSrc = previewUrl ?? currentAvatarUrl ?? null;
+  const [hasAvatarLoadError, setHasAvatarLoadError] = useState(() =>
+    avatarSrc ? failedAvatarUrls.has(avatarSrc) : false
+  );
+
+  useEffect(() => {
+    setHasAvatarLoadError(avatarSrc ? failedAvatarUrls.has(avatarSrc) : false);
+  }, [avatarSrc]);
+
+  const resolvedAvatarSrc = avatarSrc && !hasAvatarLoadError ? avatarSrc : null;
 
   return (
     <div className={styles.avatarBlock}>
       <div className={styles.avatarPreview} aria-hidden="true">
-        {avatarSrc ? (
+        {resolvedAvatarSrc ? (
           <Image
-            src={avatarSrc}
+            src={resolvedAvatarSrc}
             alt=""
             width={88}
             height={88}
             className={styles.avatarImage}
             unoptimized
+            onError={() => {
+              failedAvatarUrls.add(resolvedAvatarSrc);
+              setHasAvatarLoadError(true);
+            }}
           />
         ) : (
           <span>{getInitials(displayName)}</span>

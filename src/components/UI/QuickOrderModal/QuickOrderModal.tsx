@@ -3,22 +3,23 @@
 import { useMemo, useState } from "react";
 import { X } from "lucide-react";
 import { AnimatePresence, motion } from "framer-motion";
+import { createQuickOrderAction } from "@/actions/commerceActions";
 import { toast } from "../notifications/toast";
 
-import { createQuickOrderCSR } from "@/services/api";
-import type { AppProduct } from "@/types/app";
 import styles from "./QuickOrderModal.module.css";
 
 interface QuickOrderModalProps {
   isOpen: boolean;
   onClose: () => void;
-  product: AppProduct | null;
+  productId: string | null;
+  productName?: string;
 }
 
 export function QuickOrderModal({
   isOpen,
   onClose,
-  product,
+  productId,
+  productName,
 }: QuickOrderModalProps) {
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
@@ -109,7 +110,7 @@ export function QuickOrderModal({
     return fallback;
   };
 
-  if (!isOpen || !product) {
+  if (!isOpen || !productId) {
     return null;
   }
 
@@ -128,8 +129,8 @@ export function QuickOrderModal({
     setIsSubmitting(true);
 
     try {
-      await createQuickOrderCSR({
-        productId: product.id,
+      await createQuickOrderAction({
+        productId,
         quantity: 1,
         fullName: fullName.trim(),
         phone: normalizedPhone,
@@ -170,7 +171,7 @@ export function QuickOrderModal({
           </button>
 
           <h3 className={styles.title}>Швидке замовлення</h3>
-          <p className={styles.subtitle}>{product.name}</p>
+          <p className={styles.subtitle}>{productName ?? "Товар"}</p>
 
           <form onSubmit={handleSubmit} className={styles.form}>
             <label className={styles.label}>

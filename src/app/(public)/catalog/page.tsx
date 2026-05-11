@@ -1,7 +1,8 @@
 import { cache } from "react";
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 
-import { CatalogClient } from "@/components/catalog/CatalogClient";
+import { CatalogServer } from "@/components/catalog/CatalogServer";
 import { mapApiProductToAppProduct } from "@/services/api";
 import { getCategories, getProductsSSR } from "@/services/apiServer";
 import type { AppProduct } from "@/types/app";
@@ -29,10 +30,20 @@ export const metadata: Metadata = {
   description: "Каталог товарів інтернет-магазину Будлідер",
 };
 
+const DEFAULT_CATALOG_PAGE_LIMIT = 12;
+const COMPACT_CATALOG_PAGE_LIMIT = 8;
 const FACET_PRODUCTS_PAGE_LIMIT = 100;
+const MOBILE_TABLET_USER_AGENT_PATTERN =
+  /android|iphone|ipad|ipod|iemobile|opera mini|mobile|tablet|silk|kindle|playbook/i;
 
 const normalizeSearchText = (value: string): string =>
   value.trim().toLocaleLowerCase("uk");
+
+const resolveCatalogPageLimit = (userAgent: string | null): number => {
+  return userAgent && MOBILE_TABLET_USER_AGENT_PATTERN.test(userAgent)
+    ? COMPACT_CATALOG_PAGE_LIMIT
+    : DEFAULT_CATALOG_PAGE_LIMIT;
+};
 
 const normalizePriceParam = (value: string | undefined): string => {
   const trimmed = (value ?? "").trim();
@@ -51,6 +62,7 @@ const normalizePriceParam = (value: string | undefined): string => {
 };
 
 const loadFirstPageProducts = async (params: {
+  limit: number;
   page: number;
   category?: string;
   brand?: string;
@@ -64,9 +76,11 @@ const loadFirstPageProducts = async (params: {
   order?: "asc" | "desc" | string;
 }) => {
   try {
+    const { limit, ...requestParams } = params;
+
     return await getProductsSSR({
-      limit: 12,
-      ...params,
+      limit,
+      ...requestParams,
     });
   } catch {
     return {
@@ -187,6 +201,7 @@ const getCachedCategories = cache(async () => getCategories());
 
 const getCachedCatalogProducts = cache(
   async (
+    limit: number,
     page: number,
     category: string,
     brand: string,
@@ -200,6 +215,7 @@ const getCachedCatalogProducts = cache(
     order: string
   ) =>
     loadFirstPageProducts({
+      limit,
       page,
       category: category || undefined,
       brand: brand || undefined,
@@ -266,6 +282,10 @@ const getCachedCatalogSearchFallbackProducts = cache(
 
 export default async function CatalogPage({ searchParams }: CatalogPageProps) {
   const params = await searchParams;
+  const requestHeaders = await headers();
+  const initialCatalogPageLimit = resolveCatalogPageLimit(
+    requestHeaders.get("user-agent")
+  );
   const currentPage = parsePositiveInt(params.page);
   const initialSearch = decodeValue(params.search);
   const initialCategory = decodeValue(params.category);
@@ -299,6 +319,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
     await Promise.all([
       getCachedCategories(),
       getCachedCatalogProducts(
+        initialCatalogPageLimit,
         currentPage,
         initialCategory,
         initialBrands.join(","),
@@ -344,6 +365,7 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
   const facetAppProducts = facetProducts
     .map((product) => mapApiProductToAppProduct(product))
     .filter((product): product is AppProduct => product !== null);
+  let resolvedFacetProducts = facetAppProducts;
 
   if (initialSearch.trim().length > 0 && appProducts.length === 0) {
     const normalizedSearch = normalizeSearchText(initialSearch);
@@ -354,21 +376,26 @@ export default async function CatalogPage({ searchParams }: CatalogPageProps) {
       .filter((product) =>
         normalizeSearchText(product.name).includes(normalizedSearch)
       )
-      .slice(0, 12);
+      .slice(0, initialCatalogPageLimit);
+
+    // Keep sidebar facets aligned with fallback-rendered products when the
+    // backend search endpoint returns no items for the primary request.
+    resolvedFacetProducts = appProducts;
 
     pagination = {
       page: 1,
-      limit: 12,
+      limit: initialCatalogPageLimit,
       total: appProducts.length,
       totalPages: 1,
     };
   }
 
-  const { brands, brandCounts, priceBounds, filterCounts } =
-    buildCatalogFacets(facetAppProducts);
+  const { brands, brandCounts, priceBounds, filterCounts } = buildCatalogFacets(
+    resolvedFacetProducts
+  );
 
   return (
-    <CatalogClient
+    <CatalogServer
       categories={categories}
       products={appProducts}
       brands={brands}

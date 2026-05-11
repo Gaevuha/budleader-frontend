@@ -111,7 +111,7 @@
   position: absolute;
   left: 12px;
   right: 12px;
-  bottom: 8px;
+  bottom: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -135,7 +135,7 @@
   display: flex;
   align-items: center;
   gap: 14px;
-  padding: 9px 16px;
+  padding: 8px 16px;
   color: var(--foreground);
   text-decoration: none;
   font-size: 14px;

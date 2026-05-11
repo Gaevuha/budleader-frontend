@@ -3,6 +3,7 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 import { AUTH_QUERY_KEY, useAuth } from "@/hooks/useAuth";
+import { USER_QUERY_KEY } from "@/queries/queryKeys";
 import { publishAuthEvent } from "@/services/authBroadcast";
 import {
   changePasswordCSR,
@@ -25,7 +26,7 @@ import type {
   User,
 } from "@/types/auth";
 
-export const USER_QUERY_KEY = AUTH_QUERY_KEY;
+export { USER_QUERY_KEY } from "@/queries/queryKeys";
 
 interface UseUserOptions {
   initialData?: User | null;

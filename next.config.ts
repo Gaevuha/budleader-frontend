@@ -1,5 +1,26 @@
 import type { NextConfig } from "next";
 
+const resolveBundleAnalyzer = () => {
+  if (process.env.ANALYZE !== "true") {
+    return (config: NextConfig) => config;
+  }
+
+  try {
+    // Load analyzer only when explicitly requested.
+    // This keeps standard builds working if the dependency isn't installed.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const createBundleAnalyzer = require("@next/bundle-analyzer");
+
+    return createBundleAnalyzer({ enabled: true }) as (
+      config: NextConfig
+    ) => NextConfig;
+  } catch {
+    return (config: NextConfig) => config;
+  }
+};
+
+const withBundleAnalyzer = resolveBundleAnalyzer();
+
 const remotePatterns: NonNullable<NextConfig["images"]>["remotePatterns"] = [
   {
     protocol: "https",
@@ -25,6 +46,9 @@ if (apiUrl) {
 
 const nextConfig: NextConfig = {
   reactCompiler: true,
+  experimental: {
+    optimizePackageImports: ["lucide-react", "framer-motion"],
+  },
   images: {
     deviceSizes: [375, 460, 474, 686, 700, 768, 960, 1200, 1440],
     imageSizes: [140, 220, 237, 331, 343, 351],
@@ -34,4 +58,4 @@ const nextConfig: NextConfig = {
   },
 };
 
-export default nextConfig;
+export default withBundleAnalyzer(nextConfig);

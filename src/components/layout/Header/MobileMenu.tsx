@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Moon, Sun, User, X } from "lucide-react";
@@ -20,6 +21,7 @@ interface MobileMenuLink {
 }
 
 interface MobileMenuProps {
+  avatarSrc?: string | null;
   displayName: string;
   isAuthenticated: boolean;
   isOpen: boolean;
@@ -40,7 +42,21 @@ const primaryLinks: MobileMenuLink[] = [
   { href: "/contacts", label: "Контакти" },
 ];
 
+const PROFILE_ICON_SLOT_STYLE = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 18,
+  height: 18,
+  flex: "0 0 18px",
+} as const;
+
+const PROFILE_SECTION_MIN_HEIGHT_STYLE = {
+  minHeight: 124,
+} as const;
+
 export function MobileMenu({
+  avatarSrc,
   displayName,
   isAuthenticated,
   isOpen,
@@ -54,7 +70,12 @@ export function MobileMenu({
   const pathname = usePathname();
   const drawerRef = useRef<HTMLElement | null>(null);
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
+  const [hasAvatarLoadError, setHasAvatarLoadError] = useState(false);
   const phoneHref = normalizePhoneHref(publicSupportSettings.contactPhone);
+
+  useEffect(() => {
+    setHasAvatarLoadError(false);
+  }, [avatarSrc]);
 
   const isLinkActive = (href: string) => {
     if (href === "/") {
@@ -227,7 +248,10 @@ export function MobileMenu({
               </button>
             </div>
 
-            <div className={styles.section}>
+            <div
+              className={styles.section}
+              style={PROFILE_SECTION_MIN_HEIGHT_STYLE}
+            >
               {isAuthenticated ? (
                 <>
                   <Link
@@ -240,7 +264,22 @@ export function MobileMenu({
                     }
                     onClick={onClose}
                   >
-                    <User size={18} />
+                    <span style={PROFILE_ICON_SLOT_STYLE} aria-hidden="true">
+                      {avatarSrc && !hasAvatarLoadError ? (
+                        <Image
+                          src={avatarSrc}
+                          alt=""
+                          aria-hidden="true"
+                          width={18}
+                          height={18}
+                          className={styles.profileAvatar}
+                          unoptimized
+                          onError={() => setHasAvatarLoadError(true)}
+                        />
+                      ) : (
+                        <User size={18} />
+                      )}
+                    </span>
                     <div>
                       <p className={styles.profileLabel}>Профіль</p>
                       <p className={styles.profileValue}>{displayName}</p>
