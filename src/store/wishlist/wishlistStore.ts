@@ -1,6 +1,5 @@
 import { create } from "zustand";
 
-import { addToWishlist, getWishlist, removeFromWishlist } from "@/services/api";
 import { useAuthStore } from "@/store/auth/authStore";
 import type { AppProduct } from "@/types/app";
 
@@ -10,6 +9,22 @@ export interface WishlistItem extends AppProduct {
   productId: string;
 }
 
+type CommerceWishlistProductInput = Pick<
+  AppProduct,
+  | "id"
+  | "name"
+  | "price"
+  | "image"
+  | "category"
+  | "brand"
+  | "inStock"
+  | "oldPrice"
+  | "stock"
+  | "isNew"
+  | "isSale"
+> &
+  Partial<AppProduct>;
+
 interface WishlistStore {
   items: WishlistItem[];
   wishlist: AppProduct[];
@@ -17,7 +32,19 @@ interface WishlistStore {
   pendingProductIds: string[];
 
   hydrateGuestWishlist: () => void;
+  setSyncing: (value: boolean) => void;
+  setPending: (productId: string, isPending: boolean) => void;
   setWishlist: (items: AppProduct[]) => void;
+  replaceWithServerWishlist: (
+    items: AppProduct[],
+    options?: {
+      allowEmpty?: boolean;
+      resetPending?: boolean;
+      clearGuestStorage?: boolean;
+    }
+  ) => boolean;
+  addOptimisticItem: (product: CommerceWishlistProductInput) => void;
+  removeOptimisticItem: (productId: string) => void;
   toggleWishlist: (product: AppProduct) => Promise<void>;
   clearWishlist: () => void;
   addToWishlist: (product: AppProduct) => Promise<void>;
@@ -32,6 +59,31 @@ const isBrowser = () => typeof window !== "undefined";
 const normalizeWishlistItem = (product: AppProduct): WishlistItem => ({
   ...product,
   productId: product.id,
+});
+
+const normalizeWishlistProduct = (
+  product: CommerceWishlistProductInput
+): AppProduct => ({
+  id: product.id,
+  name: product.name,
+  slug: product.slug,
+  description: product.description,
+  price: product.price,
+  oldPrice: product.oldPrice,
+  image: product.image,
+  images: product.images,
+  stock: product.stock,
+  categoryId: product.categoryId,
+  categoryName: product.categoryName ?? product.category,
+  rating: product.rating,
+  reviewsCount: product.reviewsCount,
+  createdAt: product.createdAt,
+  updatedAt: product.updatedAt,
+  category: product.category,
+  brand: product.brand,
+  inStock: product.inStock,
+  isNew: product.isNew,
+  isSale: product.isSale,
 });
 
 const saveGuestWishlist = (items: WishlistItem[]) => {
@@ -78,13 +130,18 @@ const clearGuestWishlistStorage = () => {
 
 const setWishlistState = (
   set: (partial: Partial<WishlistStore>) => void,
-  items: WishlistItem[]
+  items: WishlistItem[],
+  pendingProductIds?: string[]
 ) => {
   set({
     items,
     wishlist: items,
+    ...(pendingProductIds ? { pendingProductIds } : {}),
   });
 };
+
+const normalizeWishlistItems = (items: AppProduct[]): WishlistItem[] =>
+  items.map((item) => normalizeWishlistItem(item));
 
 const addPendingProductId = (
   set: (
@@ -126,146 +183,106 @@ export const useWishlistStore = create<WishlistStore>((set, get) => ({
 
     setWishlistState(set, loadGuestWishlist());
   },
+  setSyncing: (value) => {
+    set({ isSyncing: value });
+  },
+  setPending: (productId, isPending) => {
+    if (isPending) {
+      addPendingProductId(set, productId);
+      return;
+    }
+
+    removePendingProductId(set, productId);
+  },
   setWishlist: (items) => {
-    const normalized = items.map((item) => normalizeWishlistItem(item));
+    const normalized = normalizeWishlistItems(items);
     setWishlistState(set, normalized);
 
     if (!useAuthStore.getState().isAuthenticated) {
       saveGuestWishlist(normalized);
     }
   },
-  toggleWishlist: async (product) => {
-    if (useAuthStore.getState().isAuthenticated) {
-      const exists = get().items.some((item) => item.id === product.id);
+  replaceWithServerWishlist: (items, options) => {
+    const normalized = normalizeWishlistItems(items);
+    const currentItems = get().items;
+    const allowEmpty = options?.allowEmpty ?? false;
 
-      if (exists) {
-        await get().removeFromWishlist(product.id);
-        return;
-      }
-
-      await get().addToWishlist(product);
-      return;
+    if (normalized.length === 0 && currentItems.length > 0 && !allowEmpty) {
+      return false;
     }
 
-    const exists = get().items.some((item) => item.id === product.id);
-    const nextItems = exists
-      ? get().items.filter((item) => item.id !== product.id)
-      : [...get().items, normalizeWishlistItem(product)];
+    if (options?.clearGuestStorage) {
+      clearGuestWishlistStorage();
+    }
+
+    setWishlistState(set, normalized, options?.resetPending ? [] : undefined);
+    return true;
+  },
+  addOptimisticItem: (product) => {
+    const normalizedProduct = normalizeWishlistItem(
+      normalizeWishlistProduct(product)
+    );
+    const nextItems = get().items.some((item) => item.id === product.id)
+      ? get().items
+      : [...get().items, normalizedProduct];
 
     setWishlistState(set, nextItems);
-    saveGuestWishlist(nextItems);
+
+    if (!useAuthStore.getState().isAuthenticated) {
+      saveGuestWishlist(nextItems);
+    }
+  },
+  removeOptimisticItem: (productId) => {
+    const nextItems = get().items.filter((item) => item.id !== productId);
+
+    setWishlistState(set, nextItems);
+
+    if (!useAuthStore.getState().isAuthenticated) {
+      saveGuestWishlist(nextItems);
+    }
+  },
+  toggleWishlist: async (product) => {
+    const exists = get().items.some((item) => item.id === product.id);
+
+    if (exists) {
+      get().removeOptimisticItem(product.id);
+      return;
+    }
+
+    get().addOptimisticItem(product);
   },
   clearWishlist: () => {
-    if (useAuthStore.getState().isAuthenticated) {
-      return;
-    }
-
     setWishlistState(set, []);
-    clearGuestWishlistStorage();
+
+    if (!useAuthStore.getState().isAuthenticated) {
+      clearGuestWishlistStorage();
+    }
   },
   addToWishlist: async (product) => {
-    if (!useAuthStore.getState().isAuthenticated) {
-      get().toggleWishlist(product);
-      return;
-    }
-
-    addPendingProductId(set, product.id);
-    set({ isSyncing: true });
-
-    const previousItems = get().items;
-    const optimisticItems = previousItems.some((item) => item.id === product.id)
-      ? previousItems
-      : [...previousItems, normalizeWishlistItem(product)];
-    setWishlistState(set, optimisticItems);
-
-    try {
-      await addToWishlist(product.id);
-    } catch (error) {
-      setWishlistState(set, previousItems);
-      throw error;
-    } finally {
-      removePendingProductId(set, product.id);
-      set({ isSyncing: false });
-    }
+    get().addOptimisticItem(product);
   },
   removeFromWishlist: async (productId) => {
-    if (!useAuthStore.getState().isAuthenticated) {
-      const nextItems = get().items.filter((item) => item.id !== productId);
-      setWishlistState(set, nextItems);
-      saveGuestWishlist(nextItems);
-      return;
-    }
-
-    addPendingProductId(set, productId);
-    set({ isSyncing: true });
-
-    const previousItems = get().items;
-    const optimisticItems = previousItems.filter(
-      (item) => item.id !== productId
-    );
-    setWishlistState(set, optimisticItems);
-
-    try {
-      await removeFromWishlist(productId);
-    } catch (error) {
-      setWishlistState(set, previousItems);
-      throw error;
-    } finally {
-      removePendingProductId(set, productId);
-      set({ isSyncing: false });
-    }
+    get().removeOptimisticItem(productId);
   },
   syncWithServer: async (serverItems) => {
-    if (!useAuthStore.getState().isAuthenticated) {
+    if (!useAuthStore.getState().isAuthenticated || !serverItems) {
       return;
     }
 
-    set({ isSyncing: true });
-
-    try {
-      const resolved = serverItems ?? (await getWishlist()).items;
-      setWishlistState(
-        set,
-        resolved.map((item) => normalizeWishlistItem(item))
-      );
-    } finally {
-      set({ isSyncing: false });
-    }
+    get().replaceWithServerWishlist(serverItems, { allowEmpty: true });
   },
   mergeGuestWishlist: async (serverItems) => {
     if (!useAuthStore.getState().isAuthenticated) {
       return;
     }
 
-    const guestItems = get().items;
+    clearGuestWishlistStorage();
 
-    if (guestItems.length === 0) {
-      await get().syncWithServer(serverItems ?? null);
-      return;
-    }
-
-    set({ isSyncing: true });
-
-    try {
-      const resolvedServerItems = serverItems ?? (await getWishlist()).items;
-      const serverIds = new Set(resolvedServerItems.map((item) => item.id));
-
-      for (const guestItem of guestItems) {
-        if (serverIds.has(guestItem.productId)) {
-          continue;
-        }
-
-        await addToWishlist(guestItem.productId);
-      }
-
-      clearGuestWishlistStorage();
-      const mergedWishlist = await getWishlist();
-      setWishlistState(
-        set,
-        mergedWishlist.items.map((item) => normalizeWishlistItem(item))
-      );
-    } finally {
-      set({ isSyncing: false });
+    if (serverItems) {
+      get().replaceWithServerWishlist(serverItems, {
+        allowEmpty: true,
+        resetPending: true,
+      });
     }
   },
   resetState: () => {

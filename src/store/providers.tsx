@@ -3,11 +3,18 @@
 import type { ReactNode } from "react";
 import { useEffect, useRef, useState } from "react";
 import {
+  HydrationBoundary,
+  type DehydratedState,
   QueryClient,
   QueryClientProvider,
   useQueryClient,
 } from "@tanstack/react-query";
+import { unstable_batchedUpdates } from "react-dom";
 
+import {
+  mergeGuestCartAction,
+  mergeGuestWishlistAction,
+} from "@/actions/commerceActions";
 import { USER_QUERY_KEY } from "@/queries/authQueries";
 import {
   type AuthBroadcastEvent,
@@ -29,6 +36,7 @@ import {
   persistThemeMode,
   resolveClientThemeMode,
 } from "@/services/themePreference";
+import { createQueryClient } from "@/store/queryClient";
 import type { ThemeMode } from "@/types/app";
 import type { User } from "@/types/auth";
 
@@ -36,7 +44,18 @@ interface ProvidersProps {
   children: ReactNode;
   initialTheme: ThemeMode;
   initialUser: User | null;
+  dehydratedState?: DehydratedState;
 }
+
+interface PerfState {
+  bootStart?: number;
+  hydrationStart?: number;
+  hydrationLogged?: boolean;
+}
+
+type PerfWindow = Window & {
+  __blPerf?: PerfState;
+};
 
 const isMongoObjectId = (value: string): boolean =>
   /^[a-f0-9]{24}$/i.test(value);
@@ -74,23 +93,25 @@ function AppBootstrap({
   const user = userQuery.data;
   const isAuthenticated = Boolean(user);
   const hydrateGuestCart = useCartStore((state) => state.hydrateGuestCart);
-  const syncCartWithServer = useCartStore((state) => state.syncWithServer);
-  const mergeGuestCart = useCartStore((state) => state.mergeGuestCart);
+  const replaceWithServerCart = useCartStore(
+    (state) => state.replaceWithServerCart
+  );
+  const setCartSyncing = useCartStore((state) => state.setSyncing);
   const resetCartState = useCartStore((state) => state.resetState);
   const hydrateGuestWishlist = useWishlistStore(
     (state) => state.hydrateGuestWishlist
   );
-  const syncWishlistWithServer = useWishlistStore(
-    (state) => state.syncWithServer
+  const replaceWithServerWishlist = useWishlistStore(
+    (state) => state.replaceWithServerWishlist
   );
-  const mergeGuestWishlist = useWishlistStore(
-    (state) => state.mergeGuestWishlist
-  );
+  const setWishlistSyncing = useWishlistStore((state) => state.setSyncing);
   const resetWishlistState = useWishlistStore((state) => state.resetState);
   const setTheme = useUIStore((state) => state.setTheme);
   const syncedUserIdRef = useRef<string | null>(null);
   const wasAuthenticatedRef = useRef(false);
   const sessionThemeKeyRef = useRef<string | null>(null);
+  const hasScheduledDeferredRef = useRef(false);
+  const [isDeferredReady, setIsDeferredReady] = useState(false);
   const cartQuery = useCartQuery(isAuthenticated);
   const wishlistQuery = useWishlistQuery(isAuthenticated);
   const userTheme = user?.theme;
@@ -111,8 +132,46 @@ function AppBootstrap({
 
     setTheme(nextTheme);
     applyThemeToDocument(nextTheme);
-    persistThemeMode(nextTheme);
   }, [initialTheme, resolvedAuthTheme, sessionKey, setTheme]);
+
+  useEffect(() => {
+    if (hasScheduledDeferredRef.current) {
+      return;
+    }
+
+    hasScheduledDeferredRef.current = true;
+
+    const startDeferred = () => {
+      setIsDeferredReady(true);
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(startDeferred);
+
+      return () => {
+        window.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timeoutId = globalThis.setTimeout(startDeferred, 0);
+
+    return () => {
+      globalThis.clearTimeout(timeoutId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isDeferredReady) {
+      return;
+    }
+
+    const nextTheme =
+      sessionKey === "guest"
+        ? resolveClientThemeMode(initialTheme)
+        : resolvedAuthTheme;
+
+    persistThemeMode(nextTheme);
+  }, [initialTheme, isDeferredReady, resolvedAuthTheme, sessionKey]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -125,6 +184,10 @@ function AppBootstrap({
   }, [hydrateGuestCart, hydrateGuestWishlist, isAuthenticated]);
 
   useEffect(() => {
+    if (!isDeferredReady) {
+      return;
+    }
+
     const channel = createAuthBroadcastChannel();
 
     if (!channel) {
@@ -160,18 +223,11 @@ function AppBootstrap({
       channel.removeEventListener("message", handleMessage);
       channel.close();
     };
-  }, [queryClient, resetCartState, resetWishlistState]);
+  }, [isDeferredReady, queryClient, resetCartState, resetWishlistState]);
 
   useEffect(() => {
-    const isWishlistReadyForSync =
-      wishlistQuery.isFetched || (wishlistQuery.data?.items?.length ?? 0) === 0;
-
     if (!isAuthenticated || !user?.id) {
       syncedUserIdRef.current = null;
-      return;
-    }
-
-    if (!isWishlistReadyForSync) {
       return;
     }
 
@@ -179,34 +235,70 @@ function AppBootstrap({
       return;
     }
 
-    syncedUserIdRef.current = user.id;
-
     const syncCommerce = async () => {
-      await mergeGuestCart(cartQuery.data ?? null);
+      const guestCartItems = useCartStore.getState().cart;
+      const guestWishlistIds = useWishlistStore
+        .getState()
+        .wishlist.map((item) => item.id)
+        .filter((item): item is string => isMongoObjectId(item));
 
-      const safeServerWishlist = (wishlistQuery.data?.items ?? []).filter(
-        (item) => isMongoObjectId(item.id)
-      );
+      if (guestCartItems.length === 0 && guestWishlistIds.length === 0) {
+        syncedUserIdRef.current = user.id;
+        return;
+      }
 
-      await mergeGuestWishlist(safeServerWishlist);
+      setCartSyncing(true);
+      setWishlistSyncing(true);
 
-      await Promise.all([
-        queryClient.invalidateQueries({ queryKey: CART_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: WISHLIST_QUERY_KEY }),
-      ]);
+      try {
+        if (guestCartItems.length > 0) {
+          const mergedCart = await mergeGuestCartAction(
+            guestCartItems.map((item) => ({
+              productId: item.productId,
+              quantity: item.quantity,
+            }))
+          );
+
+          queryClient.setQueryData(CART_QUERY_KEY, mergedCart);
+          resetCartState();
+          replaceWithServerCart(mergedCart, guestCartItems);
+        }
+
+        if (guestWishlistIds.length > 0) {
+          const mergedWishlist = await mergeGuestWishlistAction(
+            guestWishlistIds
+          );
+
+          unstable_batchedUpdates(() => {
+            queryClient.setQueryData(WISHLIST_QUERY_KEY, mergedWishlist);
+            replaceWithServerWishlist(mergedWishlist.items, {
+              allowEmpty: true,
+              clearGuestStorage: true,
+              resetPending: true,
+            });
+          });
+        }
+
+        syncedUserIdRef.current = user.id;
+      } catch {
+        syncedUserIdRef.current = null;
+      } finally {
+        setCartSyncing(false);
+        setWishlistSyncing(false);
+      }
     };
 
     void syncCommerce();
   }, [
     isAuthenticated,
-    cartQuery.data,
     queryClient,
+    replaceWithServerCart,
+    resetCartState,
+    resetWishlistState,
+    setCartSyncing,
+    replaceWithServerWishlist,
+    setWishlistSyncing,
     user?.id,
-    mergeGuestCart,
-    mergeGuestWishlist,
-    wishlistQuery.data,
-    wishlistQuery.data?.items,
-    wishlistQuery.isFetched,
   ]);
 
   useEffect(() => {
@@ -214,13 +306,14 @@ function AppBootstrap({
       return;
     }
 
-    const serverItems = cartQuery.data?.items;
-    if (!serverItems) {
+    const serverCart = cartQuery.data;
+
+    if (!serverCart?.items) {
       return;
     }
 
-    void syncCartWithServer(cartQuery.data ?? null);
-  }, [cartQuery.data, isAuthenticated, syncCartWithServer]);
+    replaceWithServerCart(serverCart);
+  }, [cartQuery.data, isAuthenticated, replaceWithServerCart]);
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -232,8 +325,8 @@ function AppBootstrap({
       return;
     }
 
-    void syncWishlistWithServer(serverWishlist);
-  }, [isAuthenticated, syncWishlistWithServer, wishlistQuery.data?.items]);
+    replaceWithServerWishlist(serverWishlist, { allowEmpty: true });
+  }, [isAuthenticated, replaceWithServerWishlist, wishlistQuery.data?.items]);
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -266,23 +359,79 @@ export function Providers({
   children,
   initialTheme,
   initialUser,
+  dehydratedState,
 }: ProvidersProps) {
-  const [queryClient] = useState(
-    () =>
-      new QueryClient({
-        defaultOptions: {
-          queries: {
-            retry: 1,
-            refetchOnWindowFocus: false,
-          },
-        },
-      })
-  );
+  const [queryClient] = useState<QueryClient>(() => createQueryClient());
+  const hasMarkedHydrationStartRef = useRef(false);
+
+  if (!hasMarkedHydrationStartRef.current && typeof window !== "undefined") {
+    hasMarkedHydrationStartRef.current = true;
+
+    const perfWindow = window as PerfWindow;
+    const perfState = perfWindow.__blPerf ?? {};
+
+    perfWindow.__blPerf = perfState;
+    perfState.hydrationStart = performance.now();
+    performance.mark("app:hydration:start");
+
+    console.debug("[perf] hydration start", {
+      ms: Math.round(perfState.hydrationStart),
+      path: window.location.pathname,
+    });
+  }
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const perfWindow = window as PerfWindow;
+    const perfState = perfWindow.__blPerf ?? {};
+    const now = performance.now();
+
+    perfWindow.__blPerf = perfState;
+
+    if (perfState.hydrationLogged) {
+      return;
+    }
+
+    perfState.hydrationLogged = true;
+
+    performance.mark("app:hydration:end");
+
+    try {
+      performance.measure(
+        "app:hydration",
+        "app:hydration:start",
+        "app:hydration:end"
+      );
+    } catch {
+      // Intentionally ignore mark/measure mismatches in non-standard environments.
+    }
+
+    const hydrationStart = perfState.hydrationStart;
+    const hydrationMs =
+      typeof hydrationStart === "number" ? now - hydrationStart : null;
+    const bootStart = perfState.bootStart;
+    const bootMs = typeof bootStart === "number" ? now - bootStart : null;
+
+    console.debug("[perf] hydration end", {
+      ms: hydrationMs !== null ? Math.round(hydrationMs) : null,
+      path: window.location.pathname,
+    });
+
+    console.debug("[perf] client js boot", {
+      ms: bootMs !== null ? Math.round(bootMs) : null,
+      path: window.location.pathname,
+    });
+  }, []);
 
   return (
     <QueryClientProvider client={queryClient}>
-      <AppBootstrap initialTheme={initialTheme} initialUser={initialUser} />
-      {children}
+      <HydrationBoundary state={dehydratedState}>
+        <AppBootstrap initialTheme={initialTheme} initialUser={initialUser} />
+        {children}
+      </HydrationBoundary>
     </QueryClientProvider>
   );
 }

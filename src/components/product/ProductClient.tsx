@@ -5,6 +5,13 @@ import { useQueryClient } from "@tanstack/react-query";
 import Image from "next/image";
 import Link from "next/link";
 import { Heart, Send, ShoppingCart, Star } from "lucide-react";
+import { unstable_batchedUpdates } from "react-dom";
+
+import {
+  addToCartAction,
+  removeFromCartAction,
+  toggleWishlistAction,
+} from "@/actions/commerceActions";
 import { toast } from "@/components/UI/notifications/toast";
 
 import type { AppProduct, ProductReview } from "@/types/app";
@@ -14,12 +21,13 @@ import { Container } from "@/components/layout/Container/Container";
 import styles from "@/components/product/ProductClient.module.css";
 import {
   mapApiProductToAppProduct,
+  type WishlistResult,
   submitProductReviewCSR,
 } from "@/services/api";
+import { CART_QUERY_KEY, WISHLIST_QUERY_KEY } from "@/queries/queryKeys";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useWishlistStore } from "@/store/wishlist/wishlistStore";
 import { useUser } from "@/queries/authQueries";
-import { WISHLIST_QUERY_KEY } from "@/queries/wishlistQueries";
 import {
   productReviewsQueryKey,
   useProductReviewsQuery,
@@ -36,13 +44,33 @@ type RawProduct = Product & {
 export function ProductClient({ product }: ProductClientProps) {
   const queryClient = useQueryClient();
   const cartItems = useCartStore((state) => state.cart);
-  const addCartItem = useCartStore((state) => state.addToCart);
-  const removeCartItem = useCartStore((state) => state.removeFromCart);
   const isCartProductPending = useCartStore((state) =>
     state.pendingProductIds.includes(product.id)
   );
+  const addOptimisticCartItem = useCartStore(
+    (state) => state.addOptimisticItem
+  );
+  const removeOptimisticCartItem = useCartStore(
+    (state) => state.removeOptimisticItem
+  );
+  const replaceWithServerCart = useCartStore(
+    (state) => state.replaceWithServerCart
+  );
+  const setCart = useCartStore((state) => state.setCart);
+  const setCartPending = useCartStore((state) => state.setPending);
   const wishlistItems = useWishlistStore((state) => state.wishlist);
-  const toggleWishlistItem = useWishlistStore((state) => state.toggleWishlist);
+  const addOptimisticWishlistItem = useWishlistStore(
+    (state) => state.addOptimisticItem
+  );
+  const removeOptimisticWishlistItem = useWishlistStore(
+    (state) => state.removeOptimisticItem
+  );
+  const replaceWithServerWishlist = useWishlistStore(
+    (state) => state.replaceWithServerWishlist
+  );
+  const setWishlist = useWishlistStore((state) => state.setWishlist);
+  const setWishlistPending = useWishlistStore((state) => state.setPending);
+  const setWishlistSyncing = useWishlistStore((state) => state.setSyncing);
   const wishlistIsSyncing = useWishlistStore((state) => state.isSyncing);
   const { data: currentUser } = useUser();
   const isAuthenticated = Boolean(currentUser);
@@ -119,23 +147,40 @@ export function ProductClient({ product }: ProductClientProps) {
     }
 
     const wasInCart = isInCartUi;
+    const previousItems = useCartStore.getState().cart;
+
     setOptimisticInCart(!wasInCart);
     setIsCartActionPending(true);
+    setCartPending(appProduct.id, true);
+
+    if (wasInCart) {
+      removeOptimisticCartItem(appProduct.id);
+    } else {
+      addOptimisticCartItem(appProduct, 1);
+    }
 
     try {
-      if (wasInCart) {
-        await removeCartItem(appProduct.id);
-      } else {
-        await addCartItem(appProduct, 1);
+      if (isAuthenticated) {
+        const serverCart = wasInCart
+          ? await removeFromCartAction(appProduct.id)
+          : await addToCartAction({
+              productId: appProduct.id,
+              quantity: 1,
+            });
+
+        queryClient.setQueryData(CART_QUERY_KEY, serverCart);
+        replaceWithServerCart(serverCart);
       }
 
       setOptimisticInCart(null);
     } catch {
+      setCart(previousItems);
       setOptimisticInCart(wasInCart);
       toast.error("Не вдалося оновити кошик");
       return;
     } finally {
       setIsCartActionPending(false);
+      setCartPending(appProduct.id, false);
     }
 
     toast.success(
@@ -145,19 +190,57 @@ export function ProductClient({ product }: ProductClientProps) {
 
   const handleToggleWishlist = async () => {
     const wasWishlisted = isWishlistedUi;
+    const previousWishlist = useWishlistStore.getState().wishlist;
+    const previousWishlistQuery =
+      queryClient.getQueryData<WishlistResult>(WISHLIST_QUERY_KEY);
+
     setIsWishlistActionPending(true);
+    setWishlistPending(appProduct.id, true);
+    setWishlistSyncing(true);
+
+    if (wasWishlisted) {
+      removeOptimisticWishlistItem(appProduct.id);
+    } else {
+      addOptimisticWishlistItem(appProduct);
+    }
 
     try {
-      await toggleWishlistItem(appProduct);
-
       if (isAuthenticated) {
-        await queryClient.invalidateQueries({ queryKey: WISHLIST_QUERY_KEY });
+        const serverWishlist = await toggleWishlistAction(
+          appProduct.id,
+          !wasWishlisted
+        );
+
+        let didApplyServerWishlist = false;
+
+        unstable_batchedUpdates(() => {
+          queryClient.setQueryData(WISHLIST_QUERY_KEY, serverWishlist);
+          didApplyServerWishlist = replaceWithServerWishlist(
+            serverWishlist.items,
+            { allowEmpty: true }
+          );
+        });
+
+        if (!didApplyServerWishlist) {
+          throw new Error(
+            "Wishlist sync requires a confirmed full server state"
+          );
+        }
       }
     } catch {
+      unstable_batchedUpdates(() => {
+        if (previousWishlistQuery) {
+          queryClient.setQueryData(WISHLIST_QUERY_KEY, previousWishlistQuery);
+        }
+
+        setWishlist(previousWishlist);
+      });
       toast.error("Не вдалося оновити список бажань");
       return;
     } finally {
       setIsWishlistActionPending(false);
+      setWishlistPending(appProduct.id, false);
+      setWishlistSyncing(false);
     }
 
     toast.success(wasWishlisted ? "Видалено з обраного" : "Додано до обраного");

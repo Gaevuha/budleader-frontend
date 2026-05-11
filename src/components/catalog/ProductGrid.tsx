@@ -1,9 +1,10 @@
-"use client";
-
-import { ConnectedProductCard } from "@/components/product/ProductCard/ConnectedProductCard";
+import Link from "next/link";
+import { ProductCardServer } from "@/components/product/ProductCard/ProductCardServer";
 import type { AppProduct } from "@/types/app";
 import styles from "@/components/catalog/Catalog.module.css";
 import homeStyles from "@/app/page.module.css";
+
+const ABOVE_THE_FOLD_PRODUCT_COUNT = 2;
 
 const CATALOG_GRID_IMAGE_SIZES =
   "(min-width: 1440px) 237px, (min-width: 768px) calc((100vw - 68px) / 2), calc(100vw - 32px)";
@@ -13,18 +14,20 @@ const HOME_GRID_IMAGE_SIZES =
 interface ProductGridProps {
   products: AppProduct[];
   viewMode?: "grid" | "list";
-  onResetFilters?: () => void;
   emptyTitle?: string;
   emptyDescription?: string;
+  emptyActionHref?: string;
+  emptyActionLabel?: string;
   variant?: "catalog" | "home";
 }
 
 export function ProductGrid({
   products,
   viewMode = "grid",
-  onResetFilters,
   emptyTitle = "Товарів не знайдено",
   emptyDescription = "Спробуйте змінити критерії пошуку або очистити фільтри.",
+  emptyActionHref,
+  emptyActionLabel = "Скинути фільтри",
   variant = "catalog",
 }: ProductGridProps) {
   if (products.length === 0) {
@@ -32,14 +35,10 @@ export function ProductGrid({
       <div className={styles.empty}>
         <h3>{emptyTitle}</h3>
         {emptyDescription ? <p>{emptyDescription}</p> : null}
-        {onResetFilters ? (
-          <button
-            type="button"
-            className={styles.resetBtn}
-            onClick={onResetFilters}
-          >
-            Скинути фільтри
-          </button>
+        {emptyActionHref ? (
+          <Link href={emptyActionHref} className={styles.resetBtn}>
+            {emptyActionLabel}
+          </Link>
         ) : null}
       </div>
     );
@@ -50,9 +49,9 @@ export function ProductGrid({
       <ul className={homeStyles.productGrid}>
         {products.map((product, index) => (
           <li key={product.id} className={homeStyles.productGridItem}>
-            <ConnectedProductCard
+            <ProductCardServer
               product={product}
-              prioritizeImage={index === 0}
+              prioritizeImage={index < ABOVE_THE_FOLD_PRODUCT_COUNT}
               gridImageSizes={HOME_GRID_IMAGE_SIZES}
             />
           </li>
@@ -65,10 +64,10 @@ export function ProductGrid({
     <ul className={viewMode === "grid" ? styles.grid : styles.list}>
       {products.map((product, index) => (
         <li key={product.id} className={styles.productListItem}>
-          <ConnectedProductCard
+          <ProductCardServer
             product={product}
             viewMode={viewMode}
-            prioritizeImage={index === 0}
+            prioritizeImage={index < ABOVE_THE_FOLD_PRODUCT_COUNT}
             gridImageSizes={CATALOG_GRID_IMAGE_SIZES}
           />
         </li>

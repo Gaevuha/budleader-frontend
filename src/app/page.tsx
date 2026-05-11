@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import styles from "@/app/page.module.css";
 import { ProductSection } from "@/components/home/ProductSection";
 import { Container } from "@/components/layout/Container/Container";
-import { HomeClient } from "@/components/home/HomeClient";
+import { HomeServer } from "@/components/home/HomeServer";
 import { mapApiProductToAppProduct } from "@/services/api";
 import { getCategories, getProductsSSR } from "@/services/apiServer";
 import type { Category } from "@/types/category";
@@ -148,7 +148,7 @@ export default async function HomePage() {
 
   return (
     <>
-      <HomeClient
+      <HomeServer
         initialCategories={resolvedCategories}
         initialPopularProducts={initialProducts}
       />

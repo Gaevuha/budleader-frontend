@@ -1,21 +1,12 @@
 "use client";
 
-import {
-  type QueryClient,
-  useMutation,
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
+import { type QueryClient, useQuery } from "@tanstack/react-query";
 
-import {
-  addToCartCSR,
-  clearCartCSR,
-  getCartCSR,
-  removeFromCartCSR,
-} from "@/services/api";
+import { getCartCSR } from "@/services/api";
 import type { CartData } from "@/types/cart";
+import { CART_QUERY_KEY } from "@/queries/queryKeys";
 
-export const CART_QUERY_KEY = ["cart"] as const;
+export { CART_QUERY_KEY } from "@/queries/queryKeys";
 
 export const setCartQueryData = (queryClient: QueryClient, data: CartData) => {
   queryClient.setQueryData<CartData>(CART_QUERY_KEY, data);
@@ -26,39 +17,10 @@ export function useCartQuery(enabled = true) {
     queryKey: CART_QUERY_KEY,
     queryFn: getCartCSR,
     enabled,
-    staleTime: 30_000,
-  });
-}
-
-export function useAddToCartMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: addToCartCSR,
-    onSuccess: (data) => {
-      setCartQueryData(queryClient, data);
-    },
-  });
-}
-
-export function useRemoveFromCartMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: removeFromCartCSR,
-    onSuccess: (data) => {
-      setCartQueryData(queryClient, data);
-    },
-  });
-}
-
-export function useClearCartMutation() {
-  const queryClient = useQueryClient();
-
-  return useMutation({
-    mutationFn: clearCartCSR,
-    onSuccess: (data) => {
-      setCartQueryData(queryClient, data);
-    },
+    staleTime: 5 * 60_000,
+    gcTime: 10 * 60_000,
+    refetchOnMount: false,
+    refetchOnWindowFocus: false,
+    refetchOnReconnect: false,
   });
 }

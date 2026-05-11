@@ -4,6 +4,8 @@ import { ConnectedProductCard } from "@/components/product/ProductCard/Connected
 import type { AppProduct } from "@/types/app";
 import styles from "@/components/catalog/Catalog.module.css";
 
+const ABOVE_THE_FOLD_PRODUCT_COUNT = 2;
+
 interface ProductListProps {
   products: AppProduct[];
   viewMode: "grid" | "list";
@@ -50,7 +52,11 @@ export function ProductList({
   return (
     <ul className={viewMode === "grid" ? styles.grid : styles.list}>
       {products.map((product, index) =>
-        renderProductListItem(product, viewMode, index === 0)
+        renderProductListItem(
+          product,
+          viewMode,
+          index < ABOVE_THE_FOLD_PRODUCT_COUNT
+        )
       )}
     </ul>
   );

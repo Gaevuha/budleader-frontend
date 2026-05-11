@@ -3,12 +3,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
+
+import { clearCartAction } from "@/actions/commerceActions";
 import { toast } from "@/components/UI/notifications/toast";
 
 import { Container } from "@/components/layout/Container/Container";
 import { Button } from "@/components/UI/Button/Button";
 import { useUser } from "@/queries/authQueries";
-import { CART_QUERY_KEY } from "@/queries/cartQueries";
+import { CART_QUERY_KEY } from "@/queries/queryKeys";
 import { createOrderCSR } from "@/services/api";
 import { useCartStore } from "@/store/cart/cartStore";
 import { useAuthModalStore } from "@/store/ui/authModalStore";
@@ -52,6 +54,11 @@ export default function CheckoutPage() {
 
   const clearLocalCart = useCartStore((state) => state.clearCart);
   const localCart = useCartStore((state) => state.cart);
+  const replaceWithServerCart = useCartStore(
+    (state) => state.replaceWithServerCart
+  );
+  const setCart = useCartStore((state) => state.setCart);
+  const setCartSyncing = useCartStore((state) => state.setSyncing);
   const cartIsSyncing = useCartStore((state) => state.isSyncing);
   const { data: currentUser } = useUser();
   const isAuthenticated = Boolean(currentUser);
@@ -122,6 +129,8 @@ export default function CheckoutPage() {
     setIsSubmitting(true);
 
     try {
+      const previousItems = useCartStore.getState().cart;
+
       await createOrderCSR({
         items: items.map((item) => ({
           productId: item.productId,
@@ -139,16 +148,27 @@ export default function CheckoutPage() {
       });
 
       try {
+        setCartSyncing(true);
         await clearLocalCart();
-      } catch {
-        // Do not fail completed order if cart cleanup request is temporarily unavailable.
-      }
 
-      queryClient.setQueryData(CART_QUERY_KEY, {
-        items: [],
-        subtotal: 0,
-        itemsCount: 0,
-      });
+        if (isAuthenticated) {
+          const clearedCart = await clearCartAction();
+
+          queryClient.setQueryData(CART_QUERY_KEY, clearedCart);
+          replaceWithServerCart(clearedCart);
+        } else {
+          queryClient.setQueryData(CART_QUERY_KEY, {
+            items: [],
+            subtotal: 0,
+            itemsCount: 0,
+          });
+        }
+      } catch {
+        setCart(previousItems);
+        // Do not fail completed order if cart cleanup request is temporarily unavailable.
+      } finally {
+        setCartSyncing(false);
+      }
 
       toast.success("Замовлення успішно створено");
       router.push("/success");

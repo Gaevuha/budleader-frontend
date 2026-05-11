@@ -1,13 +1,18 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Funnel } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import { useQueryClient } from "@tanstack/react-query";
 
-import { Container } from "@/components/layout/Container/Container";
+import { loadMoreProductsAction } from "@/actions/catalogActions";
 import Loader from "@/components/UI/Loader/Loader";
 import { toast } from "@/components/UI/notifications/toast";
 import { useBreakpoint } from "@/hooks/useBreakpoint";
@@ -15,7 +20,6 @@ import { useDebounce } from "@/hooks/useDebounce";
 import { USER_QUERY_KEY, useUser } from "@/queries/authQueries";
 import {
   getApiErrorMessage,
-  getProductsCSR,
   updateCatalogViewPreferenceCSR,
 } from "@/services/api";
 import {
@@ -26,22 +30,30 @@ import {
 import type { AppProduct, CatalogViewMode } from "@/types/app";
 import type { Pagination } from "@/types/api";
 import type { User } from "@/types/auth";
-import type { Category, CategorySubcategoryLink } from "@/types/category";
 import styles from "./Catalog.module.css";
-import { Filters } from "./Filters";
 import { CatalogToolbar } from "./CatalogToolbar";
-import { ProductGrid } from "./ProductGrid";
 
 const CatalogPagination = dynamic(
   () => import("./Pagination").then((module) => module.Pagination),
   { ssr: false }
 );
 
-const MOBILE_CATALOG_PAGE_SIZE = 8;
+const CatalogProductList = dynamic(
+  () => import("./ProductList").then((module) => module.ProductList),
+  { ssr: false }
+);
+
+const CatalogFilters = dynamic(
+  () => import("./CatalogFilters").then((module) => module.CatalogFilters),
+  {
+    ssr: false,
+    loading: () => <div className={styles.filtersPlaceholder} aria-hidden />,
+  }
+);
 
 interface CatalogClientProps {
-  categories: Category[];
-  products: AppProduct[];
+  children: ReactNode;
+  initialProducts: AppProduct[];
   brands: string[];
   brandCounts: Record<string, number>;
   priceBounds: {
@@ -55,6 +67,8 @@ interface CatalogClientProps {
   };
   pagination: Pagination | null;
   currentPage: number;
+  pageTitle: string;
+  productsCount: number;
   selectedCategory?: string;
   selectedBrands?: string[];
   searchTerm?: string;
@@ -65,9 +79,6 @@ interface CatalogClientProps {
   maxPrice?: string;
   inStockOnly?: boolean;
 }
-
-const normalizeToken = (value: string): string =>
-  decodeURIComponent(value).trim().toLowerCase();
 
 const normalizeBrandLabel = (value: string): string =>
   value.trim().replace(/\s+/g, " ");
@@ -132,14 +143,16 @@ const mergeUniqueProducts = (
 };
 
 export function CatalogClient({
-  categories,
-  products,
+  children,
+  initialProducts,
   brands,
   brandCounts,
   priceBounds,
   filterCounts,
   pagination,
   currentPage,
+  pageTitle,
+  productsCount,
   selectedCategory = "",
   selectedBrands = [],
   searchTerm = "",
@@ -159,14 +172,18 @@ export function CatalogClient({
   const [isFiltersOpen, setIsFiltersOpen] = useState(false);
   const [draftMinPrice, setDraftMinPrice] = useState(minPrice);
   const [draftMaxPrice, setDraftMaxPrice] = useState(maxPrice);
-  const [loadedProducts, setLoadedProducts] = useState(products);
+  const [loadedProducts, setLoadedProducts] = useState(initialProducts);
   const [loadedPage, setLoadedPage] = useState(currentPage);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
+  const [hasClientRenderedResults, setHasClientRenderedResults] =
+    useState(false);
   const [guestViewMode, setGuestViewMode] = useState<CatalogViewMode>(
     () => readStoredCatalogViewMode() ?? DEFAULT_CATALOG_VIEW_MODE
   );
   const [pendingViewMode, setPendingViewMode] =
     useState<CatalogViewMode | null>(null);
+  const [isIdleReady, setIsIdleReady] = useState(false);
+  const hasScheduledIdleReadyRef = useRef(false);
   const debouncedMinPrice = useDebounce(draftMinPrice, 600);
   const debouncedMaxPrice = useDebounce(draftMaxPrice, 600);
 
@@ -183,24 +200,18 @@ export function CatalogClient({
   }, [maxPrice]);
 
   useEffect(() => {
-    if (isDesktop) {
-      setLoadedProducts(products);
-      setLoadedPage(currentPage);
-    } else {
-      setLoadedProducts(products.slice(0, MOBILE_CATALOG_PAGE_SIZE));
-      setLoadedPage(1);
-    }
-
+    setLoadedProducts(initialProducts);
+    setLoadedPage(currentPage);
     setIsLoadingMore(false);
+    setHasClientRenderedResults(false);
   }, [
     currentPage,
-    isDesktop,
+    initialProducts,
     inStockOnly,
     isNewOnly,
     isSaleOnly,
     maxPrice,
     minPrice,
-    products,
     searchTerm,
     selectedBrands,
     selectedCategory,
@@ -245,6 +256,36 @@ export function CatalogClient({
   );
 
   useEffect(() => {
+    if (hasScheduledIdleReadyRef.current) {
+      return;
+    }
+
+    hasScheduledIdleReadyRef.current = true;
+
+    const markReady = () => {
+      setIsIdleReady(true);
+    };
+
+    if (typeof window !== "undefined" && "requestIdleCallback" in window) {
+      const idleId = window.requestIdleCallback(markReady);
+
+      return () => {
+        window.cancelIdleCallback(idleId);
+      };
+    }
+
+    const timeoutId = globalThis.setTimeout(markReady, 0);
+
+    return () => {
+      globalThis.clearTimeout(timeoutId);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isIdleReady) {
+      return;
+    }
+
     const nextMinPrice = normalizePriceParam(debouncedMinPrice);
     const nextMaxPrice = normalizePriceParam(debouncedMaxPrice);
     const currentMinPrice = normalizePriceParam(minPrice);
@@ -262,6 +303,7 @@ export function CatalogClient({
     debouncedMaxPrice,
     debouncedMinPrice,
     handleNavigate,
+    isIdleReady,
     maxPrice,
     minPrice,
   ]);
@@ -277,6 +319,10 @@ export function CatalogClient({
       setPendingViewMode(nextViewMode);
       setGuestViewMode(nextViewMode);
       persistCatalogViewMode(nextViewMode);
+
+      if (nextViewMode !== "grid") {
+        setHasClientRenderedResults(true);
+      }
 
       if (!currentUser) {
         setPendingViewMode(null);
@@ -301,68 +347,10 @@ export function CatalogClient({
     },
     [currentUser, persistedViewMode, queryClient, viewMode]
   );
-
-  const displayedProducts = useMemo(() => {
-    const min = normalizePriceParam(draftMinPrice);
-    const max = normalizePriceParam(draftMaxPrice);
-    const minValue = min ? Number(min) : null;
-    const maxValue = max ? Number(max) : null;
-
-    const filtered = loadedProducts.filter((product) => {
-      if (inStockOnly && !product.inStock) {
-        return false;
-      }
-
-      if (minValue !== null && product.price < minValue) {
-        return false;
-      }
-
-      if (maxValue !== null && product.price > maxValue) {
-        return false;
-      }
-
-      return true;
-    });
-
-    if (sortOrder === "price-asc") {
-      return [...filtered].sort((left, right) => left.price - right.price);
-    }
-
-    if (sortOrder === "price-desc") {
-      return [...filtered].sort((left, right) => right.price - left.price);
-    }
-
-    if (sortOrder === "name") {
-      return [...filtered].sort((left, right) =>
-        left.name.localeCompare(right.name, "uk")
-      );
-    }
-
-    return filtered;
-  }, [draftMaxPrice, draftMinPrice, inStockOnly, loadedProducts, sortOrder]);
-
-  const hasClientSideFilters =
-    inStockOnly ||
-    draftMinPrice.trim().length > 0 ||
-    draftMaxPrice.trim().length > 0;
-  const productsCount = hasClientSideFilters
-    ? displayedProducts.length
-    : typeof pagination?.total === "number" && pagination.total > 0
-    ? pagination.total
-    : displayedProducts.length;
   const shouldUseLoadMore = !isDesktop;
-  const totalPages = shouldUseLoadMore
-    ? Math.max(
-        1,
-        Math.ceil(
-          (pagination?.total ?? displayedProducts.length) /
-            MOBILE_CATALOG_PAGE_SIZE
-        )
-      )
-    : Math.max(1, pagination?.totalPages ?? 1);
-  const shouldShowPagination =
-    !shouldUseLoadMore && !hasClientSideFilters && totalPages > 1;
-  const hasMorePages = !hasClientSideFilters && loadedPage < totalPages;
+  const totalPages = Math.max(1, pagination?.totalPages ?? 1);
+  const shouldShowPagination = !shouldUseLoadMore && totalPages > 1;
+  const hasMorePages = shouldUseLoadMore && loadedPage < totalPages;
 
   const handleToggleBrand = useCallback(
     (brand: string) => {
@@ -403,7 +391,7 @@ export function CatalogClient({
   );
 
   const handleLoadMore = useCallback(async () => {
-    if (isDesktop || hasClientSideFilters || isLoadingMore || !hasMorePages) {
+    if (isDesktop || isLoadingMore || !hasMorePages) {
       return;
     }
 
@@ -413,11 +401,9 @@ export function CatalogClient({
     setIsLoadingMore(true);
 
     try {
-      const response = await getProductsCSR({
+      const response = await loadMoreProductsAction({
         page: nextPage,
-        limit: shouldUseLoadMore
-          ? MOBILE_CATALOG_PAGE_SIZE
-          : pagination?.limit ?? (products.length || 12),
+        limit: pagination?.limit ?? (initialProducts.length || 12),
         category: selectedCategory || undefined,
         brand: selectedBrands.length > 0 ? selectedBrands.join(",") : undefined,
         isNew: isNewOnly || undefined,
@@ -434,6 +420,7 @@ export function CatalogClient({
         mergeUniqueProducts(currentProducts, response.products)
       );
       setLoadedPage(nextPage);
+      setHasClientRenderedResults(true);
     } catch (error) {
       toast.error(
         getApiErrorMessage(error, "Не вдалося завантажити більше товарів")
@@ -442,9 +429,9 @@ export function CatalogClient({
       setIsLoadingMore(false);
     }
   }, [
-    hasClientSideFilters,
     hasMorePages,
     inStockOnly,
+    initialProducts.length,
     isDesktop,
     isLoadingMore,
     isNewOnly,
@@ -453,11 +440,9 @@ export function CatalogClient({
     maxPrice,
     minPrice,
     pagination?.limit,
-    products.length,
     searchTerm,
     selectedBrands,
     selectedCategory,
-    shouldUseLoadMore,
     sortOrder,
   ]);
 
@@ -509,205 +494,96 @@ export function CatalogClient({
     },
     [handleNavigate, searchTerm]
   );
-
-  const breadcrumbSegments = (() => {
-    if (!selectedCategory) {
-      if (searchTerm.trim()) {
-        return [`Пошук: ${searchTerm.trim()}`];
-      }
-
-      if (isNewOnly) {
-        return ["Новинки"];
-      }
-
-      if (isSaleOnly) {
-        return ["Акції"];
-      }
-
-      return ["Каталог"];
-    }
-
-    const token = normalizeToken(selectedCategory);
-    const categoryById = categories.find(
-      (category) => normalizeToken(category.id) === token
-    );
-
-    if (categoryById) {
-      return [categoryById.name];
-    }
-
-    for (const category of categories) {
-      for (const subgroup of category.subcategories ?? []) {
-        for (const rawLink of subgroup.links ?? []) {
-          const item =
-            typeof rawLink === "string"
-              ? { id: null, label: rawLink }
-              : {
-                  id:
-                    (rawLink as CategorySubcategoryLink).id ??
-                    (rawLink as CategorySubcategoryLink)._id ??
-                    null,
-                  label:
-                    (rawLink as CategorySubcategoryLink).name ??
-                    (rawLink as CategorySubcategoryLink).title ??
-                    "Підкатегорія",
-                };
-
-          if (item.id && normalizeToken(item.id) === token) {
-            const subgroupName = subgroup.name?.trim();
-            const isGenericSubgroup = subgroupName === "Підкатегорії";
-
-            return isGenericSubgroup
-              ? [category.name, item.label]
-              : [category.name, subgroup.name, item.label];
-          }
-        }
-      }
-    }
-
-    for (const category of categories) {
-      if (
-        normalizeToken(category.name) === token ||
-        normalizeToken(category.slug ?? "") === token
-      ) {
-        return [category.name];
-      }
-
-      for (const subgroup of category.subcategories ?? []) {
-        for (const rawLink of subgroup.links ?? []) {
-          const label =
-            typeof rawLink === "string"
-              ? rawLink
-              : rawLink.name ?? rawLink.title ?? "";
-
-          if (normalizeToken(label) === token) {
-            const subgroupName = subgroup.name?.trim();
-            const isGenericSubgroup = subgroupName === "Підкатегорії";
-
-            return isGenericSubgroup
-              ? [category.name, label]
-              : [category.name, subgroup.name, label];
-          }
-        }
-      }
-    }
-
-    return [selectedCategory];
-  })();
+  const shouldRenderServerResults =
+    !hasClientRenderedResults && viewMode === "grid";
 
   return (
-    <section className="brand-page-section" data-tone="compact">
-      <Container className={styles.pageContent}>
-        <nav className={styles.breadcrumbs} aria-label="breadcrumb">
-          <Link href="/">Головна</Link>
-          <span>/</span>
-          {breadcrumbSegments.map((segment, index) => (
-            <span key={`${segment}-${index}`}>
-              <span
-                className={
-                  index === breadcrumbSegments.length - 1
-                    ? styles.currentCrumb
-                    : undefined
-                }
+    <div className={styles.layout}>
+      <CatalogFilters
+        brands={brands}
+        brandCounts={brandCounts}
+        isOpen={isFiltersOpen}
+        selectedBrands={selectedBrands}
+        onToggleBrand={handleToggleBrand}
+        inStockOnly={inStockOnly}
+        onInStockChange={handleInStockChange}
+        isNewOnly={isNewOnly}
+        onIsNewChange={handleIsNewChange}
+        isSaleOnly={isSaleOnly}
+        onIsSaleChange={handleIsSaleChange}
+        minPrice={draftMinPrice}
+        maxPrice={draftMaxPrice}
+        minAvailablePrice={priceBounds.min}
+        maxAvailablePrice={priceBounds.max}
+        inStockCount={filterCounts.inStock}
+        isNewCount={filterCounts.isNew}
+        isSaleCount={filterCounts.isSale}
+        onMinPriceChange={handleMinPriceChange}
+        onMaxPriceChange={handleMaxPriceChange}
+        onClose={() => setIsFiltersOpen(false)}
+        onReset={() => clearFilters()}
+      />
+
+      <main className={styles.main}>
+        <div className={styles.mobileActionsRow}>
+          <button
+            type="button"
+            className={styles.mobileFiltersBtn}
+            onClick={() => setIsFiltersOpen(true)}
+            aria-expanded={isFiltersOpen}
+            aria-controls="catalog-filters"
+          >
+            <Funnel size={16} aria-hidden="true" />
+            Фільтр
+          </button>
+        </div>
+
+        <CatalogToolbar
+          showViewToggle
+          viewMode={viewMode}
+          onViewModeChange={handleViewModeChange}
+          sortOrder={sortOrder}
+          onSortOrderChange={handleSortOrderChange}
+          productsCount={productsCount}
+          title={pageTitle}
+        />
+
+        {shouldRenderServerResults ? (
+          children
+        ) : (
+          <CatalogProductList
+            products={loadedProducts}
+            viewMode={viewMode}
+            onResetFilters={() => clearFilters({ clearSearch: true })}
+          />
+        )}
+
+        {shouldShowPagination ? (
+          <CatalogPagination
+            pageCount={totalPages}
+            currentPage={currentPage}
+            onPageChange={handlePageChange}
+          />
+        ) : null}
+
+        {shouldUseLoadMore && hasMorePages ? (
+          <div className={styles.loadMoreWrapper}>
+            {isLoadingMore ? (
+              <div className={styles.loadMorePending}>
+                <Loader className={styles.loader} />
+              </div>
+            ) : (
+              <button
+                type="button"
+                className={styles.loadMoreButton}
+                onClick={handleLoadMore}
               >
-                {segment}
-              </span>
-              {index < breadcrumbSegments.length - 1 ? <span> / </span> : null}
-            </span>
-          ))}
-        </nav>
-
-        <section className={styles.catalogSection}>
-          <div className={styles.container}>
-            <div className={styles.layout}>
-              <Filters
-                brands={brands}
-                brandCounts={brandCounts}
-                isOpen={isFiltersOpen}
-                selectedBrands={selectedBrands}
-                onToggleBrand={handleToggleBrand}
-                inStockOnly={inStockOnly}
-                onInStockChange={handleInStockChange}
-                isNewOnly={isNewOnly}
-                onIsNewChange={handleIsNewChange}
-                isSaleOnly={isSaleOnly}
-                onIsSaleChange={handleIsSaleChange}
-                minPrice={draftMinPrice}
-                maxPrice={draftMaxPrice}
-                minAvailablePrice={priceBounds.min}
-                maxAvailablePrice={priceBounds.max}
-                inStockCount={filterCounts.inStock}
-                isNewCount={filterCounts.isNew}
-                isSaleCount={filterCounts.isSale}
-                onMinPriceChange={handleMinPriceChange}
-                onMaxPriceChange={handleMaxPriceChange}
-                onClose={() => setIsFiltersOpen(false)}
-                onReset={() => clearFilters()}
-              />
-
-              <main className={styles.main}>
-                <div className={styles.mobileActionsRow}>
-                  <button
-                    type="button"
-                    className={styles.mobileFiltersBtn}
-                    onClick={() => setIsFiltersOpen(true)}
-                    aria-expanded={isFiltersOpen}
-                    aria-controls="catalog-filters"
-                  >
-                    <Funnel size={16} aria-hidden="true" />
-                    Фільтр
-                  </button>
-                </div>
-
-                <CatalogToolbar
-                  showViewToggle
-                  viewMode={viewMode}
-                  onViewModeChange={handleViewModeChange}
-                  sortOrder={sortOrder}
-                  onSortOrderChange={handleSortOrderChange}
-                  productsCount={productsCount}
-                  title={breadcrumbSegments[breadcrumbSegments.length - 1]}
-                />
-
-                <ProductGrid
-                  products={displayedProducts}
-                  viewMode={viewMode}
-                  onResetFilters={() => clearFilters({ clearSearch: true })}
-                />
-
-                {shouldShowPagination ? (
-                  <CatalogPagination
-                    pageCount={totalPages}
-                    currentPage={currentPage}
-                    onPageChange={handlePageChange}
-                  />
-                ) : null}
-
-                {shouldUseLoadMore && hasMorePages ? (
-                  <div className={styles.loadMoreWrap}>
-                    {isLoadingMore ? (
-                      <div className={styles.loadMorePending}>
-                        <Loader className={styles.loadMoreLoader} />
-                        <span className={styles.visuallyHidden}>
-                          Завантаження додаткових товарів
-                        </span>
-                      </div>
-                    ) : (
-                      <button
-                        type="button"
-                        className={styles.loadMoreButton}
-                        onClick={handleLoadMore}
-                      >
-                        Показати ще
-                      </button>
-                    )}
-                  </div>
-                ) : null}
-              </main>
-            </div>
+                Показати ще
+              </button>
+            )}
           </div>
-        </section>
-      </Container>
-    </section>
+        ) : null}
+      </main>
+    </div>
   );
 }

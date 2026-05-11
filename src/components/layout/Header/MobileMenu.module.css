@@ -270,6 +270,14 @@
   margin: 0;
 }
 
+.profileAvatar {
+  flex-shrink: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 999px;
+  object-fit: cover;
+}
+
 .profileLabel {
   font-size: 12px;
   color: var(--menu-text-muted);

@@ -389,7 +389,7 @@ const unwrapUser = (payload: unknown): User | null => {
   return normalizeUser(candidate as User & { _id?: string; name?: string });
 };
 
-const normalizeCartPayload = (payload: unknown): CartData => {
+export const normalizeCartPayload = (payload: unknown): CartData => {
   const toFiniteNumberOr = (value: unknown, fallback: number): number => {
     const parsed = Number(value);
     return Number.isFinite(parsed) ? parsed : fallback;
@@ -498,7 +498,6 @@ const normalizeCartPayload = (payload: unknown): CartData => {
   };
 };
 
-
 const isCartItemCandidate = (value: unknown): boolean => {
   if (!isRecord(value)) {
     return false;
@@ -532,9 +531,9 @@ const getStructuredCartItems = (payload: unknown): unknown[] | null => {
   }
 
   return null;
-}
+};
 
-const hasCartPayload = (payload: unknown): boolean => {
+export const hasCartPayload = (payload: unknown): boolean => {
   return getStructuredCartItems(payload) !== null;
 };
 
@@ -542,7 +541,7 @@ export interface WishlistResult {
   items: AppProduct[];
 }
 
-const normalizeWishlistPayload = (payload: unknown): WishlistResult => {
+export const normalizeWishlistPayload = (payload: unknown): WishlistResult => {
   if (!payload || typeof payload !== "object") {
     return { items: [] };
   }
@@ -1107,7 +1106,6 @@ export async function resetPasswordCSR(
   await apiClient.put(`${ENDPOINTS.AUTH}/reset-password/${token}`, payload);
 }
 
-
 export function getOAuthRedirectUrl(
   provider: "google" | "facebook",
   returnTo?: string
@@ -1123,7 +1121,6 @@ export function getOAuthRedirectUrl(
     ? `${ENDPOINTS.AUTH}/${provider}?${query}`
     : `${ENDPOINTS.AUTH}/${provider}`;
 }
-
 
 // Client-side cart and wishlist methods
 

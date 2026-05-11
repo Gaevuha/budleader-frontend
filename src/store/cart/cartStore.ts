@@ -1,13 +1,6 @@
 import { create, type StoreApi } from "zustand";
 
-import {
-  addToCart,
-  clearCart as clearServerCart,
-  getCart,
-  mapApiProductToAppProduct,
-  removeFromCart as removeFromServerCart,
-  updateCartItem,
-} from "@/services/api";
+import { mapApiProductToAppProduct } from "@/services/api";
 import { useAuthStore } from "@/store/auth/authStore";
 import type { AppProduct } from "@/types/app";
 import type { CartData } from "@/types/cart";
@@ -19,6 +12,22 @@ export interface CartItem extends AppProduct {
   quantity: number;
 }
 
+type CommerceCartProductInput = Pick<
+  AppProduct,
+  | "id"
+  | "name"
+  | "price"
+  | "image"
+  | "category"
+  | "brand"
+  | "inStock"
+  | "oldPrice"
+  | "stock"
+  | "isNew"
+  | "isSale"
+> &
+  Partial<AppProduct>;
+
 interface CartStore {
   items: CartItem[];
   cart: CartItem[];
@@ -26,6 +35,18 @@ interface CartStore {
   pendingProductIds: string[];
 
   hydrateGuestCart: () => void;
+  setSyncing: (value: boolean) => void;
+  setPending: (productId: string, isPending: boolean) => void;
+  addOptimisticItem: (
+    product: CommerceCartProductInput,
+    quantity?: number
+  ) => void;
+  removeOptimisticItem: (productId: string) => void;
+  setOptimisticQuantity: (productId: string, quantity: number) => void;
+  replaceWithServerCart: (
+    serverCart: CartData,
+    fallbackItems?: CartItem[]
+  ) => void;
   addToCart: (product: AppProduct, quantity?: number) => Promise<void>;
   setCart: (items: CartItem[]) => void;
   setQuantity: (id: string, quantity: number) => void;
@@ -40,11 +61,30 @@ interface CartStore {
 const isBrowser = () => typeof window !== "undefined";
 
 const normalizeCartItem = (
-  product: AppProduct,
+  product: CommerceCartProductInput,
   quantity = 1,
   productId?: string
 ): CartItem => ({
-  ...product,
+  id: product.id,
+  name: product.name,
+  slug: product.slug,
+  description: product.description,
+  price: product.price,
+  oldPrice: product.oldPrice,
+  image: product.image,
+  images: product.images,
+  stock: product.stock,
+  categoryId: product.categoryId,
+  categoryName: product.categoryName ?? product.category,
+  rating: product.rating,
+  reviewsCount: product.reviewsCount,
+  createdAt: product.createdAt,
+  updatedAt: product.updatedAt,
+  category: product.category,
+  brand: product.brand,
+  inStock: product.inStock,
+  isNew: product.isNew,
+  isSale: product.isSale,
   productId: productId ?? product.id,
   quantity: Math.max(1, quantity),
 });
@@ -270,89 +310,78 @@ export const useCartStore = create<CartStore>((set, get) => ({
     const items = loadGuestCart();
     setCartState(set, items);
   },
-  addToCart: async (product, quantity = 1) => {
-    if (useAuthStore.getState().isAuthenticated) {
-      addPendingProductId(set, product.id);
-
-      const previousItems = get().cart;
-      const normalizedProduct = normalizeCartItem(product, quantity);
-      const optimisticItems = (() => {
-        const existing = previousItems.find(
-          (item) => item.productId === product.id
-        );
-
-        if (!existing) {
-          return [...previousItems, normalizedProduct];
-        }
-
-        return previousItems.map((item) =>
-          item.productId === product.id
-            ? {
-                ...item,
-                quantity: item.quantity + Math.max(1, quantity),
-              }
-            : item
-        );
-      })();
-
-      setCartState(set, optimisticItems);
-      logAuthenticatedCartState("add optimistic", {
-        productId: product.id,
-        previousItems,
-        optimisticItems,
-      });
-
-      try {
-        const serverCart = await addToCart({
-          productId: product.id,
-          quantity: Math.max(1, quantity),
-        });
-        const mergedItems = mapServerCartToStoreItems(
-          serverCart,
-          optimisticItems
-        );
-        logAuthenticatedCartState("add server response", {
-          productId: product.id,
-          serverCart,
-          mergedItems,
-        });
-        setCartState(set, mergedItems);
-      } catch (error) {
-        logAuthenticatedCartState("add rollback", {
-          productId: product.id,
-          error,
-          rollbackItems: previousItems,
-        });
-        setCartState(set, previousItems);
-        throw error;
-      } finally {
-        removePendingProductId(set, product.id);
-      }
-
+  setSyncing: (value) => {
+    set({ isSyncing: value });
+  },
+  setPending: (productId, isPending) => {
+    if (isPending) {
+      addPendingProductId(set, productId);
       return;
     }
 
-    if (useAuthStore.getState().isAuthenticated) {
-      return;
-    }
-
+    removePendingProductId(set, productId);
+  },
+  addOptimisticItem: (product, quantity = 1) => {
+    const previousItems = get().cart;
     const normalizedProduct = normalizeCartItem(product, quantity);
     const nextItems = (() => {
-      const existing = get().cart.find((item) => item.productId === product.id);
+      const existing = previousItems.find(
+        (item) => item.productId === product.id
+      );
 
       if (!existing) {
-        return [...get().cart, normalizedProduct];
+        return [...previousItems, normalizedProduct];
       }
 
-      return get().cart.map((item) =>
+      return previousItems.map((item) =>
         item.productId === product.id
-          ? { ...item, quantity: item.quantity + Math.max(1, quantity) }
+          ? {
+              ...item,
+              quantity: item.quantity + Math.max(1, quantity),
+            }
           : item
       );
     })();
 
     setCartState(set, nextItems);
-    saveGuestCart(nextItems);
+
+    if (!useAuthStore.getState().isAuthenticated) {
+      saveGuestCart(nextItems);
+    }
+  },
+  removeOptimisticItem: (productId) => {
+    const nextItems = get().cart.filter((item) => item.productId !== productId);
+
+    setCartState(set, nextItems);
+
+    if (!useAuthStore.getState().isAuthenticated) {
+      saveGuestCart(nextItems);
+    }
+  },
+  setOptimisticQuantity: (productId, quantity) => {
+    const nextItems =
+      quantity <= 0
+        ? get().cart.filter((item) => item.productId !== productId)
+        : get().cart.map((item) =>
+            item.productId === productId
+              ? { ...item, quantity: Math.max(1, quantity) }
+              : item
+          );
+
+    setCartState(set, nextItems);
+
+    if (!useAuthStore.getState().isAuthenticated) {
+      saveGuestCart(nextItems);
+    }
+  },
+  replaceWithServerCart: (serverCart, fallbackItems) => {
+    setCartState(
+      set,
+      mapServerCartToStoreItems(serverCart, fallbackItems ?? get().cart)
+    );
+  },
+  addToCart: async (product, quantity = 1) => {
+    get().addOptimisticItem(product, quantity);
   },
   setCart: (items) => {
     setCartState(set, items);
@@ -362,233 +391,37 @@ export const useCartStore = create<CartStore>((set, get) => ({
     }
   },
   setQuantity: (id, quantity) => {
-    if (useAuthStore.getState().isAuthenticated) {
-      return;
-    }
-
-    const nextItems = get()
-      .cart.map((item) =>
-        item.productId === id
-          ? { ...item, quantity: Math.max(1, quantity) }
-          : item
-      )
-      .filter((item) => item.quantity > 0);
-
-    setCartState(set, nextItems);
-    saveGuestCart(nextItems);
+    get().setOptimisticQuantity(id, quantity);
   },
   removeFromCart: async (id) => {
-    if (useAuthStore.getState().isAuthenticated) {
-      addPendingProductId(set, id);
-
-      const previousItems = get().cart;
-      const optimisticItems = previousItems.filter(
-        (item) => item.productId !== id
-      );
-      setCartState(set, optimisticItems);
-      logAuthenticatedCartState("remove optimistic", {
-        productId: id,
-        previousItems,
-        optimisticItems,
-      });
-
-      try {
-        const serverCart = await removeFromServerCart(id);
-        const mergedItems = mapServerCartToStoreItems(
-          serverCart,
-          optimisticItems
-        );
-        logAuthenticatedCartState("remove server response", {
-          productId: id,
-          serverCart,
-          mergedItems,
-        });
-        setCartState(set, mergedItems);
-      } catch (error) {
-        logAuthenticatedCartState("remove rollback", {
-          productId: id,
-          error,
-          rollbackItems: previousItems,
-        });
-        setCartState(set, previousItems);
-        throw error;
-      } finally {
-        removePendingProductId(set, id);
-      }
-
-      return;
-    }
-
-    if (useAuthStore.getState().isAuthenticated) {
-      return;
-    }
-
-    const nextItems = get().cart.filter((item) => item.productId !== id);
-    setCartState(set, nextItems);
-    saveGuestCart(nextItems);
+    get().removeOptimisticItem(id);
   },
   clearCart: async () => {
-    if (useAuthStore.getState().isAuthenticated) {
-      set({ isSyncing: true });
-
-      const previousItems = get().cart;
-      setCartState(set, []);
-      logAuthenticatedCartState("clear optimistic", {
-        previousItems,
-      });
-
-      try {
-        const serverCart = await clearServerCart();
-        const mergedItems = mapServerCartToStoreItems(serverCart);
-        logAuthenticatedCartState("clear server response", {
-          serverCart,
-          mergedItems,
-        });
-        setCartState(set, mergedItems);
-      } catch (error) {
-        logAuthenticatedCartState("clear rollback", {
-          error,
-          rollbackItems: previousItems,
-        });
-        setCartState(set, previousItems);
-        throw error;
-      } finally {
-        set({ isSyncing: false });
-      }
-
-      return;
-    }
-
-    if (useAuthStore.getState().isAuthenticated) {
-      return;
-    }
-
     setCartState(set, []);
-    clearGuestCartStorage();
+
+    if (!useAuthStore.getState().isAuthenticated) {
+      clearGuestCartStorage();
+    }
   },
   updateQuantity: async (productId, quantity) => {
-    if (!useAuthStore.getState().isAuthenticated) {
-      if (quantity <= 0) {
-        get().removeFromCart(productId);
-        return;
-      }
-
-      get().setQuantity(productId, quantity);
-      return;
-    }
-
-    addPendingProductId(set, productId);
-
-    const previousItems = get().cart;
-    const optimisticItems =
-      quantity <= 0
-        ? previousItems.filter((item) => item.productId !== productId)
-        : previousItems.map((item) =>
-            item.productId === productId
-              ? { ...item, quantity: Math.max(1, quantity) }
-              : item
-          );
-
-    setCartState(set, optimisticItems);
-    logAuthenticatedCartState("update optimistic", {
-      productId,
-      quantity,
-      previousItems,
-      optimisticItems,
-    });
-
-    try {
-      const serverCart =
-        quantity <= 0
-          ? await removeFromServerCart(productId)
-          : await updateCartItem(productId, quantity);
-      const mergedItems = mapServerCartToStoreItems(
-        serverCart,
-        optimisticItems
-      );
-      logAuthenticatedCartState("update server response", {
-        productId,
-        quantity,
-        serverCart,
-        mergedItems,
-      });
-      setCartState(set, mergedItems);
-    } catch (error) {
-      logAuthenticatedCartState("update rollback", {
-        productId,
-        quantity,
-        error,
-        rollbackItems: previousItems,
-      });
-      setCartState(set, previousItems);
-      throw error;
-    } finally {
-      removePendingProductId(set, productId);
-    }
+    get().setOptimisticQuantity(productId, quantity);
   },
   syncWithServer: async (serverCart) => {
-    if (!useAuthStore.getState().isAuthenticated) {
+    if (!useAuthStore.getState().isAuthenticated || !serverCart) {
       return;
     }
 
-    set({ isSyncing: true });
-
-    try {
-      const resolvedCart = serverCart ?? (await getCart());
-      const mergedItems = mapServerCartToStoreItems(resolvedCart, get().cart);
-      logAuthenticatedCartState("sync with server", {
-        resolvedCart,
-        mergedItems,
-      });
-      setCartState(set, mergedItems);
-    } finally {
-      set({ isSyncing: false });
-    }
+    get().replaceWithServerCart(serverCart);
   },
   mergeGuestCart: async (serverCart) => {
     if (!useAuthStore.getState().isAuthenticated) {
       return;
     }
 
-    const guestItems = get().cart;
+    clearGuestCartStorage();
 
-    if (guestItems.length === 0) {
-      await get().syncWithServer(serverCart ?? null);
-      return;
-    }
-
-    set({ isSyncing: true });
-
-    try {
-      const currentServerCart = serverCart ?? (await getCart());
-      const serverById = new Map(
-        currentServerCart.items.map((item) => [item.productId, item])
-      );
-
-      for (const guestItem of guestItems) {
-        const existing = serverById.get(guestItem.productId);
-
-        if (!existing) {
-          await addToCart({
-            productId: guestItem.productId,
-            quantity: Math.max(1, guestItem.quantity),
-          });
-          continue;
-        }
-
-        const mergedQuantity =
-          existing.quantity + Math.max(1, guestItem.quantity);
-
-        if (mergedQuantity !== existing.quantity) {
-          await updateCartItem(guestItem.productId, mergedQuantity);
-        }
-      }
-
-      clearGuestCartStorage();
-      const mergedCart = await getCart();
-      setCartState(set, mapServerCartToStoreItems(mergedCart, get().cart));
-    } finally {
-      set({ isSyncing: false });
+    if (serverCart) {
+      get().replaceWithServerCart(serverCart);
     }
   },
   resetState: () => {
